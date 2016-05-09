@@ -1,0 +1,6 @@
+[
+ (n1, empty # red)
+ (n2, empty)
+|
+ (e2, n2, n1, empty)
+]

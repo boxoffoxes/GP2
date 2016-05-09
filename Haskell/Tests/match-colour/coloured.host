@@ -1,0 +1,6 @@
+[
+	(n1, empty # grey)
+	(n2, empty # blue)
+|
+	(e1, n1, n2, empty # dashed)
+]

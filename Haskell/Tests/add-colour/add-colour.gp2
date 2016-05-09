@@ -1,0 +1,13 @@
+Main = col
+
+col () [
+	(n1, empty)
+|
+	(e1, n1, n1, empty)
+] => [
+	(n1, empty # red)
+|
+	(e1, n1, n1, empty # dashed)
+]
+interface = {n1}
+

@@ -51,6 +51,7 @@ compileHost is = concat [ "\n\n", decl "_HOST", " {\n", build [ "addNodes", show
           makeHostElem (ABN _)     (n, cs) = (n+1, cs)
           makeHostElem (ABE _ s t) (n, cs) = (n, build ["addEdgeById", show s, show t]:cs)
           makeHostElem (RBN id v)  (n, cs) = (n, build ["setRootById", show id]:cs)
+          makeHostElem (CBL id c)  (n, cs) = (n, build ["setColourById", show id, show c]:cs)
           makeHostElem NOP         (n, cs) = (n, cs)
           makeHostElem i           (n, cs) = error $ "Don't know how to host-compile " ++ show i
           makeNodes    _           (n, cs) = (n, cs)
@@ -90,7 +91,7 @@ compileIns (DBL reg)         = build ["DBL", show reg]
 
 compileIns (RBN dst bool)    = build ["RBN", show dst, show bool]
 
-compileIns (CBL reg c)       = build ["CBN", show reg, show c]
+compileIns (CBL reg c)       = build ["CBL", show reg, show c]
 compileIns (LBL dst n)       = error "Compilation not implemented"
 
 compileIns (BND dst ss)      = build ["BND", show dst, spcName ss]

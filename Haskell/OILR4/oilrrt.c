@@ -486,8 +486,10 @@ void unsetRoot(Element *n) {
 }
 void setColour(Element *n, long c) {
 	long flags = (flags(n) & ~COLR_MASK) | (c<<COLR_OFFS);
+	assert(c >= 0 && c < 1<<OILR_C_BITS);
 	setFlags(n, flags);
-	reindexNode(n);
+	if (isNode(n))
+		reindexNode(n);
 	debug("(#) Set colour on element %ld to %ld\n", elementId(n), c);
 	oilrStatus(n);
 }
@@ -979,7 +981,7 @@ void BAK() {
 #define RBN(r, v) RBN_ ## v(r)
 #define RBN_True(r)  do { setRoot(reg(r)); } while (0)
 #define RBN_False(r) do { unsetRoot(reg(r)); } while (0)
-#define CBN(r, c) setColour(reg(r), c)
+#define CBL(r, c) setColour(reg(r), c)
 
 void bnd(Element **dst, DList **spc, DList **dl, long *pos) {
 	*pos = *dl ? *pos : 0; 

@@ -1,0 +1,14 @@
+Main = rule
+
+rule () [
+	(n1, empty # grey)
+	(n2, empty # any)
+|
+	(e2, n1, n2, empty # dashed)
+] => [
+	(n1, empty)
+	(n2, empty # red)
+|
+	(e2, n1, n2, empty)
+]
+interface = {n1, n2}

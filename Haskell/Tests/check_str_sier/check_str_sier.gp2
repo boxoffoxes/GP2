@@ -1,0 +1,44 @@
+Main = unsier! 
+// ; if broken then fail else skip
+
+unsier () [
+	(n1, empty)
+	(n2, empty)
+	(n3, empty)
+
+	(n4, empty)
+	(n5, empty)
+	(n6, empty)
+	|
+	(e1, n1, n4, empty)
+	(e2, n5, n1, empty) 
+	(e3, n4, n5, empty)
+
+	(e5, n4, n6, empty) 
+	(e4, n2, n4, empty)
+	(e7, n5, n6, empty) 
+	(e6, n3, n5, empty)
+
+	(e8, n6, n2, empty)
+	(e9, n6, n3, empty)
+] => [
+	(n1, empty)
+	(n2, empty)
+	(n3, empty)
+	| 
+	(e1, n1, n2, empty)
+	(e3, n2, n3, empty) 
+	(e2, n3, n1, empty)
+]
+interface = {n1, n2, n3}
+
+broken () [
+	(n1 (R), empty)
+	(n2, empty)
+	|
+] => [
+	(n1 (R), empty)
+	(n2, empty)
+	|
+]
+interface = {n1, n2}

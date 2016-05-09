@@ -17,7 +17,6 @@ GRIT
 Graphite*
 parser*
 lexer*
-root
 Definition
 YAM
 *.supp

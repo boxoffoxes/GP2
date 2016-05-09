@@ -44,7 +44,7 @@ options = [ Option ['O'] ["no-oilr"] (NoArg NoOILR)
             Option ['a'] ["append"] (NoArg UseAppendToIndex)
                     "Append index with modified nodes instead of prepending.",
             Option ['c'] ["compact-index"] (NoArg UseCompactIndex)
-                    "Enable abstraction layer over OILR indices",
+                    "Use a minimal set of OILR indices",
 
             Option ['d'] ["debug"]   (NoArg EnableDebugging)
                     "Enable verbose debugging output on compiled program's stderr" ,
@@ -118,5 +118,5 @@ main = do
                                          callCCompiler compiler exe targ
                      -- return ()
         _ -> do
-            error "Nope"
+            putStrLn $ usageInfo "Usage: gp2c [opts] <prog> [host]\n  where available opts are:" options
 

@@ -1,0 +1,15 @@
+Main = move
+
+move () [
+	(n1 (R), empty)
+	(n2, empty)
+|
+	(e1, n1, n2, empty)
+] => [
+	(n1, empty)
+	(n2 (R), empty)
+|
+	(e1, n1, n2, empty)
+]
+interface = {n1, n2}
+

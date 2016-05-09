@@ -6,21 +6,44 @@ ISO="`pwd`/../IsoChecker"
 
 
 failure () {
-	echo -e "\t\e[31mfailure\e[0m"
+	echo -e "\e[31m failure\e[0m"
 }
 
 success () {
-	echo -e "\t\e[success\e[0m"
+	echo -e "\e[32m success\e[0m"
 }
 
-for d in */ ; do
+solution_exists () {
+	if [ ! -f Solutions/$1.out ]; then
+		echo -e "\e[33m no solution found\e[0m"
+		false
+	fi
+}
+ok () {
+	echo -n "."
+}
+
+run_test () {
+	d=$1
 	p=${d%%/}
 	pushd $d > /dev/null
 	for t in *.host ; do
-		echo -n Testing $t in $d
-		( $GP2C $p.gp2 $t && ./$p > /tmp/$p.out && $ISO /tmp/$p.out Solutions/$t ) > /dev/null 2>&1 && success || failure
+		echo -n "Testing $t in $d	"
+		if solution_exists $t; then
+			( $GP2C $p.gp2 $t && ./$p > /tmp/$p.out && $ISO /tmp/$p.out Solutions/$t.out ) > /dev/null 2>&1 && success || failure
+		fi
 	done
 	rm -f $p $p.c
 	popd > /dev/null
-done
+	
+}
+
+
+if [ -z "$1" ]; then 
+	for d in */ ; do
+		run_test $d
+	done
+else
+	run_test $1
+fi
 

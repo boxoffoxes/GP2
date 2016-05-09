@@ -8,6 +8,9 @@ all : tags $(TARGETS)
 gp2c : GP2c.hs OILR4/CRuntime.hs
 	$(GHC) -o $@ $<
 
+test : gp2c
+	cd Tests && ./run-tests.sh
+
 OILR4/CRuntime.hs : OILR4/oilrrt.c
 	touch OILR4/CRuntime.hs
 

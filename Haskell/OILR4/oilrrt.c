@@ -969,7 +969,7 @@ void BAK() {
 	pass_ ## spc :
 	
 
-#define ABN(dst)            do { reg(dst) = addNode(); if (btDepth) { pushB(reg(dst); pushB(UnAdd) ) } } while (0)
+#define ABN(dst)            do { reg(dst) = addNode(); } while (0)
 #define ABE(dst, src, tgt)  do { reg(dst) = addEdge(reg(src), reg(tgt)); } while (0)
 #define ABL(dst, src)       do { reg(dst) = addLoop(reg(src)); } while (0)
 #define DBE(r) deleteEdge(reg(r))

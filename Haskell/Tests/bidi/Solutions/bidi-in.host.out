@@ -1,0 +1,8 @@
+[
+ (n1, empty)
+ (n2, empty)
+|
+ (e2, n1, n2, empty)
+ (e4, n2, n1, empty)
+ (e3, n2, n2, empty)
+]

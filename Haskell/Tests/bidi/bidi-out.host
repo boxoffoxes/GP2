@@ -1,0 +1,7 @@
+[
+	(n1, empty)
+	(n2, empty)
+|
+	(e1, n1, n2, empty)
+	(e2, n1, n1, empty)
+]

@@ -972,6 +972,7 @@ void BAK() {
 #define ABN(dst)            do { reg(dst) = addNode(); } while (0)
 #define ABE(dst, src, tgt)  do { reg(dst) = addEdge(reg(src), reg(tgt)); } while (0)
 #define ABL(dst, src)       do { reg(dst) = addLoop(reg(src)); } while (0)
+#define DBN(r) deleteNode(reg(r))
 #define DBE(r) deleteEdge(reg(r))
 #define DBL(r) deleteLoop(reg(r))
 

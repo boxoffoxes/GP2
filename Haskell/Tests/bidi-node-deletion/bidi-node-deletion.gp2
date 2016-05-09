@@ -1,0 +1,16 @@
+Main = bidi
+
+bidi () [
+	(n1, empty)
+	(n2, empty)
+	(n3, empty)
+|
+	(e1 (B), n1, n2, empty)
+	(e2, n2, n3, empty)
+] => [
+	(n1, empty)
+	(n3, empty)
+|
+]
+interface = {n1, n2}
+

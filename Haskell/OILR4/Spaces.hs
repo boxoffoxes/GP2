@@ -13,12 +13,12 @@ import Debug.Trace
 
 
 allIndices :: [Sig]
-allIndices = [ Sig o i l r | b <- [True, False]
-                           , c <- [0..(cBits indBits - 1)]
-                           , o <- [0..(oBits indBits - 1)]
-                           , i <- [0..(iBits indBits - 1)]
-                           , l <- [0..(lBits indBits - 1)]
-                           , r <- [True, False] ]
+allIndices = [ Sig o i l r 0 | b <- [True, False]
+                             , c <- [0..(cBits indBits - 1)]
+                             , o <- [0..(oBits indBits - 1)]
+                             , i <- [0..(iBits indBits - 1)]
+                             , l <- [0..(lBits indBits - 1)]
+                             , r <- [True, False] ]
 
 
 bShift i = shift i $ rBits indBits + lBits indBits + iBits indBits + oBits indBits + cBits indBits
@@ -98,14 +98,26 @@ indsOfColour :: Colour -> [Int]
 indsOfColour Any  = [ cShift id | (_, id) <- colourIds ]
 indsOfColour c    = [ cShift $ definiteLookup c colourIds ]
 
+{- Correct for bidirectional edges: a bidi edge can either be an out-edge, or
+ - an in-edge, but not both. A bidi flag on loops has no effect and is handled
+ - at signature creation time in IR.hs. The bi signature element therefore does
+ - not include "bidi" loops -}
+
+biCorrections :: Int -> [(Int, Int)]
+biCorrections n = [(oc, ic) | oc <- [0..n], ic <- [0..n], oc+ic == n]
+
 indsOfSig :: Bool -> Sig -> [Int]
-indsOfSig False (Sig o i l r) = [ oil + rShift r' | r' <- [0,1], r' >= toInt r ]
-    where oil = oShift o + iShift i + lShift l
-indsOfSig True  (Sig o i l r) = [ oShift o' + iShift i' + lShift l' + rShift r'
-                                | o' <- getInds o $ oBits indBits
-                                , i' <- getInds i $ iBits indBits
-                                , l' <- getInds l $ lBits indBits
-                                , r' <- getInds (toInt r) $ rBits indBits ]
+indsOfSig False (Sig o i l r bi) =
+    [ oShift (o+oc) + iShift (i+ic) + lShift l + rShift r'
+        | r' <- [0,1], r' >= toInt r
+        , (oc, ic) <- biCorrections bi ]
+indsOfSig True  (Sig o i l r bi) =
+    [ oShift (o'+oc) + iShift (i'+oc) + lShift l' + rShift r'
+        | o' <- getInds o $ oBits indBits
+        , i' <- getInds i $ iBits indBits
+        , l' <- getInds l $ lBits indBits
+        , r' <- getInds (toInt r) $ rBits indBits
+        , (oc, ic) <- biCorrections bi ]
 
 getInds actual bits =
     if actual > max

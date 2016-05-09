@@ -249,7 +249,7 @@ growRule (RuleBody lhs rhs) lhsIns rhsIns = RuleBody lhs' rhs'
           rhs'  = rhsIns  ++ rhs
 
 diffs :: Mapping Id Int -> Reg -> OilrElem -> OilrElem -> [Instr]
-diffs regs r (IRNode ib cb lb (Sig _ _ _ rb)) (IRNode ia ca la (Sig _ _ _ ra)) =
+diffs regs r (IRNode ib cb lb (Sig _ _ _ rb _)) (IRNode ia ca la (Sig _ _ _ ra _)) =
     -- TODO: root flag setting not detected!
     concat [ if cb /= ca then [CBL r $ definiteLookup ca colourIds] else []
            , if lb /= la then [LBL r 0] else []     -- TODO: label support

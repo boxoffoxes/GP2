@@ -88,7 +88,7 @@ compileIns (DBN reg)         = build ["DBN", show reg]
 compileIns (DBE reg)         = build ["DBE", show reg]
 compileIns (DBL reg)         = build ["DBL", show reg]
 
-compileIns (RBN dst bool)    = build ["RBN", show dst, if bool then "1" else "0"]
+compileIns (RBN dst bool)    = build ["RBN", show dst, show bool]
 
 compileIns (CBL reg c)       = build ["CBN", show reg, show c]
 compileIns (LBL dst n)       = error "Compilation not implemented"

@@ -28,18 +28,10 @@ data IRLabel = IRInt Int
 data Sig = Sig { outDeg      :: Int
                , inDeg       :: Int
                , loopDeg     :: Int
-               , rootDeg     :: Bool }
+               , rootDeg     :: Bool
+               , biDeg       :: Int}
          | NoSig
      deriving (Show, Eq) 
-
-{- instance Ord Sig where
-    NoSig            `compare` NoSig             = EQ
-    NoSig            `compare` (Sig _ _ _ _)     = LT
-    (Sig _ _ _ _)    `compare` NoSig             = GT
-    (Sig _ _ _ True) `compare` (Sig _ _ _ False) = GT
-    (Sig _ _ _ False) `compare` (Sig _ _ _ True) = LT
-    (Sig o1 i1 l1 _) `compare` (Sig o2 i2 l2 _)  = (o1+i1+l1) `compare` (o2+i2+l2)
-    x `compare` y = error $ "Bugger: " ++ show [x,y] -}
 
 data OilrElem = IRNode  Id  Colour  IRLabel  Sig
               | IREdge  Id  Colour  IRLabel  Bool  Id Id
@@ -47,12 +39,6 @@ data OilrElem = IRNode  Id  Colour  IRLabel  Sig
               | IRNot   OilrElem
               | IRNothing
      deriving (Show, Eq)
-{- instance Ord OilrElem where
-    (IRNode _ _ _ a)     `compare` (IRNode _ _ _ b)     = a `compare` b
-    (IRNode _ _ _ _)     `compare` _                    = GT
-    _                    `compare` (IRNode _ _ _ _)     = GT
-    (IREdge _ _ _ _ _ _) `compare` (IREdge _ _ _ _ _ _) = EQ
-    a `compare` b = error $ "Arse: " ++ show [a,b] -}
 
 type OilrRule = [OilrMod]
 
@@ -95,7 +81,7 @@ cCon Any     = 0
 cCon _       = 1
 
 sCon :: Sig -> Int
-sCon (Sig o i l r)
+sCon (Sig o i l r bi)
     | r         = o+i+(2*l)+1
     | otherwise = o+i+(2*l)
 sCon NoSig = 0
@@ -155,13 +141,15 @@ ruleGraphIR lhs rhs = nodes ++ edges
 makeSigs :: AstRuleGraph -> Mapping Id Sig
 makeSigs (AstRuleGraph ns es) = map makeSig ns
     where makeSig :: RuleNode -> (Id, Sig)
-          makeSig (RuleNode id r _) = (id, Sig (nO id es) (nI id es) (nL id es) r) 
+          makeSig (RuleNode id r _) = (id, Sig (nO id es) (nI id es) (nL id es) r (bi id es)) 
           nO :: Id -> [AstRuleEdge] -> Int
-          nO id es = length $ filter (\(AstRuleEdge _ _ src tgt _) -> src == id && tgt /= id) es
+          nO id es = length $ filter (\(AstRuleEdge _ bi src tgt _) -> not bi && src == id && tgt /= id) es
           nI :: Id -> [AstRuleEdge] -> Int
-          nI id es = length $ filter (\(AstRuleEdge _ _ src tgt _) -> tgt == id && src /= id) es
+          nI id es = length $ filter (\(AstRuleEdge _ bi src tgt _) -> not bi && tgt == id && src /= id) es
           nL :: Id -> [AstRuleEdge] -> Int
           nL id es = length $ filter (\(AstRuleEdge _ _ src tgt _) -> src == id && tgt == id) es
+          bi :: Id -> [AstRuleEdge] -> Int -- bidi edges are a pain!
+          bi id es = length $ filter (\(AstRuleEdge _ bi src tgt _) -> bi && src == id || tgt == id && src /= tgt) es
 
 
 -- Make sure conditional rules are compiled correctly
@@ -277,7 +265,7 @@ makeIRNode sigs (RuleNode id root (RuleLabel l c)) = IRNode id c i sig
     where i = makeIRLabel l
           sig = case lookup id sigs of
                     Nothing -> NoSig
-                    Just s  -> s
+                    Just s  -> s { rootDeg=root }
 
 makeIRLabel :: [RuleAtom] -> IRLabel
 makeIRLabel []                  = IREmpty

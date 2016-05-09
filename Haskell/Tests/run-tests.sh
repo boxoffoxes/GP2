@@ -22,6 +22,12 @@ solution_exists () {
 ok () {
 	echo -n "."
 }
+isocheck () {
+	for f in Solutions/$1.out* ; do 
+		$ISO $2 $f
+	done | grep "^ISOMORPHIC"
+}
+
 
 run_test () {
 	d=$1
@@ -30,7 +36,7 @@ run_test () {
 	for t in *.host ; do
 		echo -n "Testing $t in $d	"
 		if solution_exists $t; then
-			( $GP2C $p.gp2 $t && ./$p > /tmp/$p.out && $ISO /tmp/$p.out Solutions/$t.out ) > /dev/null 2>&1 && success || failure
+			( $GP2C $p.gp2 $t && ./$p > /tmp/$p.out && isocheck $t /tmp/$p.out ) > /dev/null 2>&1 && success || failure
 		fi
 	done
 	rm -f $p $p.c

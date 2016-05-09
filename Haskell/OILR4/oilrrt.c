@@ -975,6 +975,9 @@ void BAK() {
 #define DBE(r) deleteEdge(reg(r))
 #define DBL(r) deleteLoop(reg(r))
 
+#define RBN(r, v) RBN_ ## v(r)
+#define RBN_True(r)  do { setRoot(reg(r)); } while (0)
+#define RBN_False(r) do { unsetRoot(reg(r)); } while (0)
 #define CBN(r, c) setColour(reg(r), c)
 
 void bnd(Element **dst, DList **spc, DList **dl, long *pos) {

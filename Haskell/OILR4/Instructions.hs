@@ -63,6 +63,7 @@ data Instr =
     | BEN Dst Dst Reg      -- Bind Edge and Node in either direction from Reg
     | BLO Dst Reg          -- Bind a LOop on node in Reg
     | NEC Src Tgt          -- Negative Edge Condition from Src to Tgt
+    | CKC Reg Col          -- ChecK the Colour of element in Reg matches Col
 
     -- Definitions & program structure
     | DEF Id               -- DEFine function Idopen source dev site

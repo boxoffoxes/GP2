@@ -1,0 +1,15 @@
+[
+ (n1, empty # red)
+ (n2, empty # red)
+ (n3, empty # red)
+ (n4, empty # green)
+ (n5, empty # red)
+ (n6, empty # red)
+ (n7, empty)
+|
+ (e1, n7, n1, empty)
+ (e2, n7, n2, empty)
+ (e3, n7, n3, empty)
+ (e5, n7, n5, empty)
+ (e6, n7, n6, empty)
+]

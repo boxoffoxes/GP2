@@ -1,0 +1,16 @@
+[
+	(n1, empty)
+	(n2, empty # red)
+	(n3, empty # red)
+	(n4, empty # green)
+	(n5, empty # red)
+	(n6, empty # red)
+	(n7, empty # red)
+|
+	(e1, n1, n2, empty)
+	(e2, n1, n3, empty)
+	(e3, n1, n4, empty # dashed)
+	(e4, n1, n5, empty)
+	(e5, n1, n6, empty)
+	(e5, n1, n7, empty)
+]

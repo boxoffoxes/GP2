@@ -52,6 +52,7 @@ compileHost is = concat [ "\n\n", decl "_HOST", " {\n", build [ "addNodes", show
           makeHostElem (ABE _ s t) (n, cs) = (n, build ["addEdgeById", show s, show t]:cs)
           makeHostElem (RBN id v)  (n, cs) = (n, build ["setRootById", show id]:cs)
           makeHostElem (CBL id c)  (n, cs) = (n, build ["setColourById", show id, show c]:cs)
+          makeHostElem (LBL id i)  (n, cs) = (n, build ["setLabelById", show id, show i]:cs)
           makeHostElem NOP         (n, cs) = (n, cs)
           makeHostElem i           (n, cs) = error $ "Don't know how to host-compile " ++ show i
           makeNodes    _           (n, cs) = (n, cs)

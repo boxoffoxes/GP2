@@ -21,14 +21,20 @@ compileHostGraph g = nodes g ++ edges g
 -- host graph OILR instruction generation
 -- -------------------------------------------------------------------
 
+
+
+
 nodes :: HostGraph -> OilrCode
 nodes g = concatMap node $ allNodes g
     where
-        node (n, HostNode _ root (HostLabel [] c)) =
+        compileAtoms :: NodeKey -> [HostAtom] -> OilrCode
+        compileAtoms n [] = []
+        compileAtoms n [Int i] = [LBL (nodeNumber n) i]
+        node (n, HostNode _ root (HostLabel as c)) =
             ABN (nodeNumber n)
             : (if root then RBN (nodeNumber n) True else NOP)
             : (if c == Uncoloured then NOP else CBL (nodeNumber n) (definiteLookup c colourIds ) )
-            : []
+            : compileAtoms n as
 
 
 edges :: HostGraph -> OilrCode

@@ -177,6 +177,7 @@ DList *indexMap[];
 #define bBits(el) (flags(el) & LABL_MASK)
 #define isLabelled(el) (bBits(el))
 #define getLabel(el) ((el)->label)
+#define relabel(el, i) do { (el)->label = i; } while (0)
 
 // bound
 #define BIND_OFFS (LABL_OFFS+OILR_B_BITS)
@@ -457,6 +458,7 @@ void sign(Element *n) {
 }
 // #define OILR_INDEX_APPEND
 void indexNode(Element *n) {
+	assert(isNode(n));
 	sign(n);
 #ifdef OILR_INDEX_APPEND
 	appendElem(index(signature(n)), chainFor(n));
@@ -465,6 +467,7 @@ void indexNode(Element *n) {
 #endif
 }
 void unindexNode(Element *n) {
+	assert(isNode(n));
 	removeElem(chainFor(n));
 }
 void reindexNode(Element *n) {
@@ -493,8 +496,17 @@ void setColour(Element *n, long c) {
 	debug("(#) Set colour on element %ld to %ld\n", elementId(n), c);
 	oilrStatus(n);
 }
+void setLabel(Element *n, long i) {
+	long flags = (flags(n) | (1<<LABL_OFFS));
+	setFlags(n, flags);
+	relabel(n, i);
+	if (isNode(n))
+		reindexNode(n);
+	debug("(3) Set label on element %ld to %ld\n", elementId(n), i);
+}
 #define setRootById(n) setRoot( getElementById(n) )
 #define setColourById(n, c) setColour( getElementById(n), (c) )
+#define setLabelById(n, i) setLabel( getElementById(n), (i) )
 
 void freeElement(Element *ne) {
 	ne->free = g.freeList;

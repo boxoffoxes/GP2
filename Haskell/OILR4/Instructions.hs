@@ -273,7 +273,9 @@ diffs regs r (IREdge ib cb lb bb sb tb) (IREdge ia ca la ba sa ta)
 
 mkLabelTest :: Reg -> IRLabel -> [Instr]
 mkLabelTest r IREmpty = []
+mkLabelTest r (IRVar _) = []
 mkLabelTest r (IRInt i) = [CKL r i]
+mkLabelTest r l = error $ "Unimplemented label format: " ++ show l
 
 mkEdgeTests :: Reg -> IRLabel -> Colour -> [Instr]
 mkEdgeTests r l Dashed = CME r:mkLabelTest r l

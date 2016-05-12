@@ -103,7 +103,7 @@ declIR :: Declaration -> OilrIR
 declIR (Main cs)                          = declIR (Proc "Main" [] cs)
 declIR p@(Proc id ds [c])                 = IRProc id $ exprIR c
 declIR p@(Proc id ds cs)                  = IRProc id $ exprIR (Sequence cs)
-declIR (AstRuleDecl r@(AstRule id _ _ _)) = IRRule id $ ruleIR r
+declIR (AstRuleDecl r@(AstRule id vts _ _)) = IRRule id $ ruleIR r
 
 -- Compile a procedure expression to OILR IR
 exprIR :: Expr -> OilrExpr
@@ -124,18 +124,21 @@ exprIR Fail                     = IRFals
 
 -- Compile a rule body to OILR IR
 -- data AstRule = AstRule RuleName [Variable] (AstRuleGraph, AstRuleGraph) Condition
+-- note that all variables are defaulted to ListVar at parse time and 
+-- only fixed up later. This is why we need to pass around the symbol 
+-- table vts, so we can reconcile variables with their actual types.
 ruleIR :: AstRule -> OilrRule
-ruleIR (AstRule id vs (lhs, rhs) cond) = ruleGraphIR lhs rhs ++ irConds
-    where irConds = case ruleCondIR cond of
+ruleIR (AstRule id vs (lhs, rhs) cond) = ruleGraphIR vs lhs rhs ++ irConds
+    where irConds = case ruleCondIR vs cond of
                         IRNothing              -> []
                         e@(IREdge _ _ _ _ _ _) -> [Same e]
                         c                      -> [Check c]
 
 -- Compile a pair of GP2 graphs to an IR rule
-ruleGraphIR :: AstRuleGraph -> AstRuleGraph -> OilrRule
-ruleGraphIR lhs rhs = nodes ++ edges
-    where nodes = map (irNode sigs) $ allNodePairs lhs rhs
-          edges = makeIREdges lhs rhs
+ruleGraphIR :: [Variable] -> AstRuleGraph -> AstRuleGraph -> OilrRule
+ruleGraphIR vs lhs rhs = nodes ++ edges
+    where nodes = map (irNode vs sigs) $ allNodePairs lhs rhs
+          edges = makeIREdges vs lhs rhs
           sigs  = makeSigs lhs
 
 makeSigs :: AstRuleGraph -> Mapping Id Sig
@@ -153,13 +156,13 @@ makeSigs (AstRuleGraph ns es) = map makeSig ns
 
 
 -- Make sure conditional rules are compiled correctly
-ruleCondIR :: Condition -> OilrElem
-ruleCondIR NoCondition         = IRNothing
-ruleCondIR (Not c)             = IRNot $ ruleCondIR c
-ruleCondIR (Edge s t Nothing)                = IREdge "" Any IRAny           False s t
-ruleCondIR (Edge s t (Just (RuleLabel l c))) = IREdge "" c   (makeIRLabel l) False s t
-ruleCondIR (Eq as bs)          = IREql (makeIRLabel as) (makeIRLabel bs)
-ruleCondIR c = error $ "Unsupported conditional: " ++ show c
+ruleCondIR :: [Variable] -> Condition -> OilrElem
+ruleCondIR vs NoCondition         = IRNothing
+ruleCondIR vs (Not c)             = IRNot $ ruleCondIR vs c
+ruleCondIR vs (Edge s t Nothing)                = IREdge "" Any IRAny           False s t
+ruleCondIR vs (Edge s t (Just (RuleLabel l c))) = IREdge "" c   (makeIRLabel vs l) False s t
+ruleCondIR vs (Eq as bs)          = IREql (makeIRLabel vs as) (makeIRLabel vs bs)
+ruleCondIR vs c = error $ "Unsupported conditional: " ++ show c
 
 ---------------------------------------------------------------------
 -- Node mangling...
@@ -195,10 +198,10 @@ allNodeIds (AstRuleGraph lns _) (AstRuleGraph rns _) =
 -- The situation is complicated by the presence of bidi rule edges
 
 -- Wrapper function for edge-handling complexity!
-makeIREdges :: AstRuleGraph -> AstRuleGraph -> OilrRule
-makeIREdges (AstRuleGraph _ les) (AstRuleGraph _ res) =
-    packEdges [] [ makeIREdge e | e <- les ]
-                 [ makeIREdge e | e <- res ]
+makeIREdges :: [Variable] -> AstRuleGraph -> AstRuleGraph -> OilrRule
+makeIREdges vs (AstRuleGraph _ les) (AstRuleGraph _ res) =
+    packEdges [] [ makeIREdge vs e | e <- les ]
+                 [ makeIREdge vs e | e <- res ]
 
 
 -- AstRuleEdge EdgeName Bool NodeName NodeName RuleLabel
@@ -238,20 +241,20 @@ irEdgeSimilarity (IREdge _ _ _ False lsrc ltgt) (IREdge _ _ _ False rsrc rtgt)
 
 
 -- TODO: edge id?
-makeIREdge :: AstRuleEdge -> OilrElem
-makeIREdge (AstRuleEdge _ bidi src tgt (RuleLabel l c)) =
-    IREdge "" c (makeIRLabel l) bidi src tgt
+makeIREdge :: [Variable] -> AstRuleEdge -> OilrElem
+makeIREdge vs (AstRuleEdge _ bidi src tgt (RuleLabel l c)) =
+    IREdge "" c (makeIRLabel vs l) bidi src tgt
 
 
 ---------------------------------------------------------------------
 -- IR creation functions
 ---------------------------------------------------------------------
 
-irNode :: Mapping Id Sig -> (Maybe RuleNode, Maybe RuleNode) -> OilrMod
-irNode sigs = irElem (makeIRNode sigs) (==)
+irNode :: [Variable] -> Mapping Id Sig -> (Maybe RuleNode, Maybe RuleNode) -> OilrMod
+irNode vs sigs = irElem (makeIRNode vs sigs) (==)
 
-irEdge :: (Maybe AstRuleEdge, Maybe AstRuleEdge) -> OilrMod
-irEdge = irElem makeIREdge edgeEquality
+irEdge :: [Variable] -> (Maybe AstRuleEdge, Maybe AstRuleEdge) -> OilrMod
+irEdge vs = irElem (makeIREdge vs) edgeEquality
 
 irElem :: (a -> OilrElem) -> (a -> a -> Bool) -> (Maybe a, Maybe a) -> OilrMod
 irElem mkElem _   (Just l, Nothing) = Delete (mkElem l)
@@ -260,21 +263,23 @@ irElem mkElem eql (Just l,  Just r)
             | l `eql` r  =  Same   (mkElem l)
             | otherwise  =  Change (mkElem l) (mkElem r)
 
-makeIRNode :: Mapping Id Sig -> RuleNode -> OilrElem
-makeIRNode sigs (RuleNode id root (RuleLabel l c)) = IRNode id c i sig
-    where i = makeIRLabel l
+makeIRNode :: [Variable] -> Mapping Id Sig -> RuleNode -> OilrElem
+makeIRNode vs sigs (RuleNode id root (RuleLabel l c)) = IRNode id c i sig
+    where i = makeIRLabel vs l
           sig = case lookup id sigs of
                     Nothing -> NoSig
                     Just s  -> s { rootDeg=root }
 
-makeIRLabel :: [RuleAtom] -> IRLabel
-makeIRLabel []                  = IREmpty
-makeIRLabel [Val (Int i)]       = IRInt i
-makeIRLabel [Val v]             = error $ "Unsupported literal value: " ++ show v
-makeIRLabel [Var (v, IntVar)]   = IRVar v
-makeIRLabel [Var (v, ListVar)]  = IRLst v  -- TODO: only valid if v is not evaluated!
-makeIRLabel [Var (v, t)]        = error $ v ++ " is of unsupported type: " ++ show t
-makeIRLabel [atom]              = error $ "Unsupported atom: " ++ show atom
-makeIRLabel (x:xs)              = error "List type labels are not supported"
+makeIRLabel :: [Variable] -> [RuleAtom] -> IRLabel
+makeIRLabel vs []                  = IREmpty
+makeIRLabel vs [Val (Int i)]       = IRInt i
+makeIRLabel vs [Val v]             = error $ "Unsupported literal value: " ++ show v
+makeIRLabel vs [Var (v, ListVar)]  = case lookup v vs of
+                                        Just IntVar  -> IRVar v
+                                        Just ListVar -> IRLst v  -- TODO: only valid if v is not evaluated!
+                                        t -> error $ v ++ " is of unsupported type: " ++ show t
+makeIRLabel vs [Var (v, t)]        = error $ "All variables coming out of the parser should have type ListVar, but variable " ++ v ++ " had type " ++ show t
+makeIRLabel vs [atom]              = error $ "Unsupported atom: " ++ show atom
+makeIRLabel vs (x:xs)              = error "List type labels are not supported"
 
 

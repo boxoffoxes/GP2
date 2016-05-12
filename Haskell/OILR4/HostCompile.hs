@@ -38,8 +38,10 @@ nodes g = concatMap node $ allNodes g
 
 
 edges :: HostGraph -> OilrCode
-edges g = map edge $ allEdges g
+edges g = concatMap edge $ allEdges g
     where
-        edge (e, _) = ABE (edgeNumber e) (nodeNumber $ source e) (nodeNumber $ target e)
+        edge (e, hl) = ABE (edgeNumber e) (nodeNumber $ source e) (nodeNumber $ target e) : edgeLabel e hl
+        edgeLabel e (HostLabel _ Dashed) = [CBL (-1) 1]  {- HACK! -1 indicates that backend should use most recently created element id. This will totally bite me one day. -}
+        edgeLabel _ _ = []
 
 

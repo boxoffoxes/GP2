@@ -51,6 +51,7 @@ compileHost is = concat [ "\n\n", decl "_HOST", " {\n", build [ "addNodes", show
           makeHostElem (ABN _)     (n, cs) = (n+1, cs)
           makeHostElem (ABE _ s t) (n, cs) = (n, build ["addEdgeById", show s, show t]:cs)
           makeHostElem (RBN id v)  (n, cs) = (n, build ["setRootById", show id]:cs)
+          makeHostElem (CBL (-1) c) (n, cs)= (n, build ["setColourById", "g.freeId-1", show c]:cs)
           makeHostElem (CBL id c)  (n, cs) = (n, build ["setColourById", show id, show c]:cs)
           makeHostElem (LBL id i)  (n, cs) = (n, build ["setLabelById", show id, show i]:cs)
           makeHostElem NOP         (n, cs) = (n, cs)
@@ -103,6 +104,7 @@ compileIns (BIN d0 d1 tgt)   = build ("BIN":[show n|n<-[d0,d1,tgt]])
 compileIns (BEN d0 d1 r0)    = error "Compilation not implemented"
 compileIns (BLO dst r0)      = build ["BLO", show dst, show r0]
 compileIns (NEC src tgt)     = build ["NEC", show src, show tgt]
+compileIns (CME reg)         = build ["CME", show reg]
 
 compileIns (TAR t)           = t ++ ":\n"
 compileIns (BRZ t)           = build ["BRZ", t]

@@ -13,7 +13,7 @@
 #define OILR_T_BITS 2
 #define OILR_INDEX_BITS (OILR_B_BITS+OILR_C_BITS+OILR_O_BITS+OILR_I_BITS+OILR_L_BITS+OILR_R_BITS)
 
-#define OILR_INDEX_SIZE (1<<(OILR_INDEX_BITS-1))
+#define OILR_INDEX_SIZE (1<<(OILR_INDEX_BITS))
 #define DONE return
 #define MIN_ALLOC_INCREMENT (1024*1024*4)  // 4 meg
 
@@ -491,10 +491,11 @@ void setColour(Element *n, long c) {
 	long flags = (flags(n) & ~COLR_MASK) | (c<<COLR_OFFS);
 	assert(c >= 0 && c < 1<<OILR_C_BITS);
 	setFlags(n, flags);
-	if (isNode(n))
+	if (isNode(n)) {
 		reindexNode(n);
+		oilrStatus(n);
+	}
 	debug("(#) Set colour on element %ld to %ld\n", elementId(n), c);
-	oilrStatus(n);
 }
 void setLabel(Element *n, long i) {
 	long flags = (flags(n) | (1<<LABL_OFFS));
@@ -1087,6 +1088,14 @@ void bnd(Element **dst, DList **spc, DList **dl, long *pos) {
 		unbind(antiEdge); \
 		boolFlag = !boolFlag; \
 		if (!boolFlag) fail(); \
+	} while (0)
+
+#define CME(r) \
+	do { \
+		if (!cBits(reg(r))) { \
+			boolFlag = 0; \
+			fail(); \
+		} \
 	} while (0)
 
 #define SUC() if (recursionDepth>0) do { trace('S'); oilrTrace(NULL); nextTraceId(); recursionDepth--; (*self)(); boolFlag=1; } while (0)

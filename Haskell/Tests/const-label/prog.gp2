@@ -1,0 +1,9 @@
+Main = rule!
+
+rule () [
+	(n1, 1)
+|
+] => [
+|
+]
+interface = { }

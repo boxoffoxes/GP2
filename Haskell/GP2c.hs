@@ -50,6 +50,8 @@ options = [ Option ['O'] ["no-oilr"] (NoArg NoOILR)
                     "Enable verbose debugging output on compiled program's stderr" ,
             Option ['e'] ["extra-debug"]   (NoArg EnableParanoidDebugging)
                     "Enable paranoid graph structure checks (implies -d)",
+            Option ['p'] ["profile"] (NoArg EnableProfiling)
+                    "Compile program with gprof profiling enabled.",
             Option ['t'] ["trace"]   (NoArg EnableExecutionTrace)
                     "Enable execution trace" ]
 
@@ -62,6 +64,7 @@ compilerFlagsCommon = "-Wno-format -Wno-unused-label -Wall -Wextra -Werror -o "
 getCompilerFor flags = concat [ cc, compilerFlagsCommon ]
     where
         arch = if Compile32Bit `elem` flags then " -m32 " else " -m64 "
+        prof = if EnableProfiling `elem` flags then "-pg " else ""
         cc = if ( EnableDebugging `elem` flags || EnableParanoidDebugging `elem` flags)
                 then debugCompiler ++ arch
                 else perfCompiler ++ arch

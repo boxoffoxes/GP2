@@ -7,6 +7,7 @@ import OILR4.Config
 import OILR4.IR
 import OILR4.Spaces
 
+import GPSyntax   -- for colour
 import Mapping    -- for mappings
 
 import Debug.Trace
@@ -63,7 +64,8 @@ data Instr =
     | BEN Dst Dst Reg      -- Bind Edge and Node in either direction from Reg
     | BLO Dst Reg          -- Bind a LOop on node in Reg
     | NEC Src Tgt          -- Negative Edge Condition from Src to Tgt
-    | CKC Reg Col          -- ChecK the Colour of element in Reg matches Col
+    | CME Reg              -- Check for Mark on Edge in Reg
+    | CKL Reg Int          -- ChecK Label of element in Reg has value Val
 
     -- Definitions & program structure
     | DEF Id               -- DEFine function Idopen source dev site
@@ -220,23 +222,23 @@ compileMod (Create x) (cfg, regs, body) = case x of
     where r = length regs
 compileMod (Delete x) (cfg, regs, body) = case x of
     (IRNode id _ _ _)      -> ( cfg', (id,r):regs, growRule body [BND r sid] [DBN r] )
-    (IREdge id _ _ bi s t)
-        | s == t    -> ( cfg, (id,r):regs, growRule body [bed regs r s t bi] [DBL r] )
-        | otherwise -> ( cfg, (id,r):regs, growRule body [bed regs r s t bi] [DBE r] )
+    (IREdge id c _ bi s t)
+        | s == t    -> ( cfg, (id,r):regs, growRule body (bed regs r c s t bi) [DBL r] )
+        | otherwise -> ( cfg, (id,r):regs, growRule body (bed regs r c s t bi) [DBE r] )
     where r = length regs
           cfg' = makeSpc cfg (Delete x)
           sid = fst $ head $ searchSpaces cfg'
 compileMod (Same x)   (cfg, regs, body) = case x of
     IRNode id _ _ _      -> (cfg', (id,r):regs, growRule body [BND r sid] [])
-    IREdge id _ _ bi s t -> (cfg,  (id,r):regs, growRule body [bed regs r s t bi] [])
+    IREdge id c _ bi s t -> (cfg,  (id,r):regs, growRule body (bed regs r c s t bi) [])
     where r = length regs
           cfg' = makeSpc cfg (Same x)
           sid = fst $ head $ searchSpaces cfg'
 compileMod (Change left right) (cfg, regs, body) = case (left, right) of
     (IRNode id _ _ _     , IRNode _ _ _ _)
             -> (cfg', (id,r):regs, growRule body [BND r sid]         (diffs regs r left right) )
-    (IREdge id _ _ bi s t, IREdge _ _ _ _ _ _)
-            -> (cfg,  (id,r):regs, growRule body [bed regs r s t bi] (diffs regs r left right) )
+    (IREdge id c _ bi s t, IREdge _ _ _ _ _ _)
+            -> (cfg,  (id,r):regs, growRule body (bed regs r c s t bi) (diffs regs r left right) )
     where r = length regs
           cfg' = makeSpc cfg $ Change left right
           sid = fst $ head $ searchSpaces cfg'
@@ -264,10 +266,14 @@ diffs regs r (IREdge ib cb lb bb sb tb) (IREdge ia ca la ba sa ta)
         False -> [ DBE r, abe regs r sa ta, CBL r $ definiteLookup ca edgeColourIds, LBL r 0] -- TODO: label support
     | otherwise            = error "Edge source and target should not change"
 
-bed :: Mapping Id Reg -> Reg -> Id -> Id -> Bool -> Instr
-bed regs r s t _ | s==t = BLO r (definiteLookup s regs)
-bed regs r s t False = BOE r (definiteLookup s regs) (definiteLookup t regs)
-bed regs r s t True  = BED r (definiteLookup s regs) (definiteLookup t regs)
+mkEdgeTests :: Reg -> Colour -> [Instr]
+mkEdgeTests r Dashed = [CME r]
+mkEdgeTests _ _ = []
+
+bed :: Mapping Id Reg -> Reg -> Colour -> Id -> Id -> Bool -> [Instr]
+bed regs r c s t _ | s==t = BLO r (definiteLookup s regs):mkEdgeTests r c
+bed regs r c s t False = BOE r (definiteLookup s regs) (definiteLookup t regs):mkEdgeTests r c
+bed regs r c s t True  = BED r (definiteLookup s regs) (definiteLookup t regs):mkEdgeTests r c
 
 
 abe :: Mapping Id Reg -> Reg -> Id -> Id -> Instr

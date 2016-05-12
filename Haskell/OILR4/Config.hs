@@ -34,6 +34,7 @@ data Flag = NoOILR               -- switch off OILR indexing entirely
           | EnableDebugging
           | EnableParanoidDebugging
           | EnableExecutionTrace
+          | EnableProfiling
     deriving (Eq, Show)
 
 data OilrIndexBits = OilrIndexBits { bBits::Int

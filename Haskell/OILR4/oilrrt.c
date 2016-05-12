@@ -1098,6 +1098,15 @@ void bnd(Element **dst, DList **spc, DList **dl, long *pos) {
 		} \
 	} while (0)
 
+#define CKL(r, i) \
+	do { \
+		if (getLabel(reg(r)) != i) { \
+			boolFlag = 0; \
+			fail(); \
+		} \
+	} while (0)
+
+
 #define SUC() if (recursionDepth>0) do { trace('S'); oilrTrace(NULL); nextTraceId(); recursionDepth--; (*self)(); boolFlag=1; } while (0)
 
 #define BNZ(tgt) if (boolFlag) goto tgt

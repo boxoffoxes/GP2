@@ -23,25 +23,27 @@ compileHostGraph g = nodes g ++ edges g
 
 
 
+compileAtoms :: Int -> [HostAtom] -> [Instr]
+compileAtoms _ [] = []
+compileAtoms id [Int i] = [LBL id i]
+compileAtoms _ as = error $ "Unsupported label in host: " ++ show as
 
 nodes :: HostGraph -> OilrCode
 nodes g = concatMap node $ allNodes g
     where
-        compileAtoms :: NodeKey -> [HostAtom] -> OilrCode
-        compileAtoms n [] = []
-        compileAtoms n [Int i] = [LBL (nodeNumber n) i]
         node (n, HostNode _ root (HostLabel as c)) =
             ABN (nodeNumber n)
             : (if root then RBN (nodeNumber n) True else NOP)
             : (if c == Uncoloured then NOP else CBL (nodeNumber n) (definiteLookup c colourIds ) )
-            : compileAtoms n as
+            : compileAtoms (nodeNumber n) as
 
 
 edges :: HostGraph -> OilrCode
 edges g = concatMap edge $ allEdges g
     where
         edge (e, hl) = ABE (edgeNumber e) (nodeNumber $ source e) (nodeNumber $ target e) : edgeLabel e hl
-        edgeLabel e (HostLabel _ Dashed) = [CBL (-1) 1]  {- HACK! -1 indicates that backend should use most recently created element id. This will totally bite me one day. -}
+        {- HACK! -1 indicates that backend should use most recently created element id. This will totally bite me one day. -}
+        edgeLabel e (HostLabel as Dashed) = CBL (-1) 1:compileAtoms (-1) as
         edgeLabel _ _ = []
 
 

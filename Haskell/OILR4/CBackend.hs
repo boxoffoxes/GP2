@@ -53,6 +53,7 @@ compileHost is = concat [ "\n\n", decl "_HOST", " {\n", build [ "addNodes", show
           makeHostElem (RBN id v)  (n, cs) = (n, build ["setRootById", show id]:cs)
           makeHostElem (CBL (-1) c) (n, cs)= (n, build ["setColourById", "g.freeId-1", show c]:cs)
           makeHostElem (CBL id c)  (n, cs) = (n, build ["setColourById", show id, show c]:cs)
+          makeHostElem (LBL (-1) i) (n, cs)= (n, build ["setLabelById", "g.freeId-1", show i]:cs)
           makeHostElem (LBL id i)  (n, cs) = (n, build ["setLabelById", show id, show i]:cs)
           makeHostElem NOP         (n, cs) = (n, cs)
           makeHostElem i           (n, cs) = error $ "Don't know how to host-compile " ++ show i
@@ -105,6 +106,7 @@ compileIns (BEN d0 d1 r0)    = error "Compilation not implemented"
 compileIns (BLO dst r0)      = build ["BLO", show dst, show r0]
 compileIns (NEC src tgt)     = build ["NEC", show src, show tgt]
 compileIns (CME reg)         = build ["CME", show reg]
+compileIns (CKL reg i)       = build ["CKL", show reg, show i]
 
 compileIns (TAR t)           = t ++ ":\n"
 compileIns (BRZ t)           = build ["BRZ", t]

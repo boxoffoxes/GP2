@@ -183,6 +183,7 @@ edgeTo _ _ = False
 edgeFrom n (BOE _ s _) =  n==s
 edgeFrom _ _ = False
 
+{- Yet Another Merge Attempt! -}
 yama acc seen (i@(BND r _):is) =
     case (find (edgeTo r) is, find (edgeFrom r) is) of
         (Just x@(BOE e s t), _      ) -> if s `elem` seen
@@ -192,6 +193,9 @@ yama acc seen (i@(BND r _):is) =
                                             then yama (BIN e s t:acc) (r:seen) $ is \\ [x]
                                             else yama (i:acc) (r:seen) is
         (Nothing, Nothing)            -> yama (i:acc) (r:seen) is
+yama acc seen (i@(CKL r _):j:is)
+    | r `elem` seen = yama (i:acc) seen is
+    | otherwise     = yama acc seen (j:i:is)
 yama acc seen (i:is) = yama (i:acc) seen is
 yama acc _ [] = reverse acc
     
@@ -206,6 +210,7 @@ sortInstr :: [Reg] -> [Instr] -> [Instr] -> [Instr]
 sortInstr rs acc (i@(BND r _):is) = sortInstr rs' (i:acc) $ concat [promoted, rest]
     where (promoted, rest) = partition promotable is
           rs' = r:rs
+          promotable (CKL x _)   | x == r = True
           promotable (BLO _ n)   | n `elem` rs' = True
           promotable (BOE _ s t) | s `elem` rs' && t `elem` rs' = True
           promotable (BED _ a b) | a `elem` rs' && b `elem` rs' = True
@@ -221,24 +226,24 @@ compileMod (Create x) (cfg, regs, body) = case x of
     (IREdge id _ _ _ s t ) -> ( cfg, (id,r):regs, growRule body [] [abe regs r s t] )
     where r = length regs
 compileMod (Delete x) (cfg, regs, body) = case x of
-    (IRNode id _ _ _)      -> ( cfg', (id,r):regs, growRule body [BND r sid] [DBN r] )
-    (IREdge id c _ bi s t)
-        | s == t    -> ( cfg, (id,r):regs, growRule body (bed regs r c s t bi) [DBL r] )
-        | otherwise -> ( cfg, (id,r):regs, growRule body (bed regs r c s t bi) [DBE r] )
+    (IRNode id _ l _)      -> ( cfg', (id,r):regs, growRule body (BND r sid:mkLabelTest r l) [DBN r] )
+    e@(IREdge id c _ bi s t)
+        | s == t    -> ( cfg, (id,r):regs, growRule body (bed regs r e) [DBL r] )
+        | otherwise -> ( cfg, (id,r):regs, growRule body (bed regs r e) [DBE r] )
     where r = length regs
           cfg' = makeSpc cfg (Delete x)
           sid = fst $ head $ searchSpaces cfg'
 compileMod (Same x)   (cfg, regs, body) = case x of
-    IRNode id _ _ _      -> (cfg', (id,r):regs, growRule body [BND r sid] [])
-    IREdge id c _ bi s t -> (cfg,  (id,r):regs, growRule body (bed regs r c s t bi) [])
+    IRNode id _ l _      -> (cfg', (id,r):regs, growRule body (BND r sid:mkLabelTest r l) [])
+    e@(IREdge id _ _ _ _ _) -> (cfg,  (id,r):regs, growRule body (bed regs r e) [])
     where r = length regs
           cfg' = makeSpc cfg (Same x)
           sid = fst $ head $ searchSpaces cfg'
 compileMod (Change left right) (cfg, regs, body) = case (left, right) of
-    (IRNode id _ _ _     , IRNode _ _ _ _)
-            -> (cfg', (id,r):regs, growRule body [BND r sid]         (diffs regs r left right) )
-    (IREdge id c _ bi s t, IREdge _ _ _ _ _ _)
-            -> (cfg,  (id,r):regs, growRule body (bed regs r c s t bi) (diffs regs r left right) )
+    (IRNode id _ l _     , IRNode _ _ _ _)
+            -> (cfg', (id,r):regs, growRule body (BND r sid:mkLabelTest r l) (diffs regs r left right) )
+    (e@(IREdge id c _ _ _ _), IREdge _ _ _ _ _ _)
+            -> (cfg,  (id,r):regs, growRule body (bed regs r e) (diffs regs r left right) )
     where r = length regs
           cfg' = makeSpc cfg $ Change left right
           sid = fst $ head $ searchSpaces cfg'
@@ -266,14 +271,21 @@ diffs regs r (IREdge ib cb lb bb sb tb) (IREdge ia ca la ba sa ta)
         False -> [ DBE r, abe regs r sa ta, CBL r $ definiteLookup ca edgeColourIds, LBL r 0] -- TODO: label support
     | otherwise            = error "Edge source and target should not change"
 
-mkEdgeTests :: Reg -> Colour -> [Instr]
-mkEdgeTests r Dashed = [CME r]
-mkEdgeTests _ _ = []
+mkLabelTest :: Reg -> IRLabel -> [Instr]
+mkLabelTest r IREmpty = []
+mkLabelTest r (IRInt i) = [CKL r i]
 
-bed :: Mapping Id Reg -> Reg -> Colour -> Id -> Id -> Bool -> [Instr]
-bed regs r c s t _ | s==t = BLO r (definiteLookup s regs):mkEdgeTests r c
-bed regs r c s t False = BOE r (definiteLookup s regs) (definiteLookup t regs):mkEdgeTests r c
-bed regs r c s t True  = BED r (definiteLookup s regs) (definiteLookup t regs):mkEdgeTests r c
+mkEdgeTests :: Reg -> IRLabel -> Colour -> [Instr]
+mkEdgeTests r l Dashed = CME r:mkLabelTest r l
+mkEdgeTests r l _ = mkLabelTest r l
+
+{-              | IREdge  Id  Colour  IRLabel  Bool  Id Id -}
+bed :: Mapping Id Reg -> Reg -> OilrElem -> [Instr]
+bed regs r (IREdge _ c l _ s t) | s==t = BLO r (definiteLookup s regs):mkEdgeTests r l c
+bed regs r (IREdge _ c l False s t) =
+    BOE r (definiteLookup s regs) (definiteLookup t regs):mkEdgeTests r l c
+bed regs r (IREdge _ c l True s t) =
+    BED r (definiteLookup s regs) (definiteLookup t regs):mkEdgeTests r l c
 
 
 abe :: Mapping Id Reg -> Reg -> Id -> Id -> Instr

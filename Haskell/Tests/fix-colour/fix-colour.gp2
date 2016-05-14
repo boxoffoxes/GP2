@@ -1,0 +1,11 @@
+Main = rule!
+
+rule () [
+	(n1, empty # any)
+|
+	(e1, n1, n1, empty)
+] => [
+	(n1, empty # grey)
+|
+]
+interface = { n1}

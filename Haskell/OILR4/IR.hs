@@ -273,6 +273,7 @@ makeIRNode vs sigs (RuleNode id root (RuleLabel l c)) = IRNode id c i sig
 makeIRLabel :: [Variable] -> [RuleAtom] -> IRLabel
 makeIRLabel vs []                  = IREmpty
 makeIRLabel vs [Val (Int i)]       = IRInt i
+makeIRLabel vs [Neg (Val (Int i))] = IRInt (-i)  -- work-around for parser bug
 makeIRLabel vs [Val v]             = error $ "Unsupported literal value: " ++ show v
 makeIRLabel vs [Var (v, ListVar)]  = case lookup v vs of
                                         Just IntVar  -> IRVar v

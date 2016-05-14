@@ -964,13 +964,15 @@ void BAK() {
 
 // OILR instructions
 
+// failStack size is n+1 because we start with a value on the stack
+// and then push up to n values, meaning we can over-write memory.
 #define REGS(n) \
-	static void *failStack[(n)]; \
+	static void *failStack[(n+1)]; \
 	static long fsi; \
 	Element *regs[n]; \
 	failStack[0] = &&l_exit; \
 	memset(regs, 0, sizeof(Element *)*(n)); \
-	fsi=0
+	fsi=0  // needed because fsi is static (to save stack space)
 	// fprintf(stderr, "%d: %p %p\n", MAX_RECURSE-recursionDepth, __builtin_frame_address(0), __builtin_frame_address(1))
 	
 #define ASRT(spc) \
@@ -999,6 +1001,7 @@ void BAK() {
 void bnd(Element **dst, DList **spc, DList **dl, long *pos) {
 	*pos = *dl ? *pos : 0; 
 	*dl  = *dl ? *dl  : spc[0];
+	assert(*pos >= 0 && *pos < OILR_INDEX_SIZE );
 	do {
 		while ( listLength(spc[*pos]) == 0 ) {
 			// skip empty indices

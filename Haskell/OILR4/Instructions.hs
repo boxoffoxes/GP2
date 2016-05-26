@@ -67,6 +67,12 @@ data Instr =
     | CME Reg              -- Check for Mark on Edge in Reg
     | CKL Reg Int          -- ChecK Label of element in Reg has value Val
 
+    -- Label arithmetic
+    | CLL Dst Src          -- Copy eLement Label from Src to Dst
+    | ADL Dst Src          -- ADd Label of Src to label of Dst
+    | ADI Dst Int          -- ADd Immediate Int to label of Dst (use negative to subtr)
+
+
     -- Definitions & program structure
     | DEF Id               -- DEFine function Idopen source dev site
     | ALAP Id              -- call Id for As Long As Possible
@@ -219,6 +225,9 @@ sortInstr rs acc (i@(BND r _):is) = sortInstr rs' (i:acc) $ concat [promoted, re
           promotable _ = False
 sortInstr rs acc (i:is) = sortInstr rs (i:acc) is
 sortInstr _  acc []     = reverse acc
+
+{- compileRHSLabel :: Mapping VarName Reg -> IRLabel -> [Instr]
+compileRHSLabel vars (IRVar v) = [LBL] -}
 
 compileMod :: OilrMod -> (OilrConfig, Mapping Id Int, DefBody) -> (OilrConfig, Mapping Id Int, DefBody)
 compileMod (Create x) (cfg, regs, body) = case x of

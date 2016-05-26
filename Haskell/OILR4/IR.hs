@@ -21,6 +21,7 @@ instance Ord OilrMod where
 data IRLabel = IRInt Int
              | IRVar Id  -- Integer variable
              | IRLst Id  -- GP 2 list. preserved but not manipulated
+             | IRAdd IRLabel IRLabel
              | IRAny
              | IREmpty
      deriving (Show, Eq)
@@ -279,6 +280,7 @@ makeIRLabel vs [Var (v, ListVar)]  = case lookup v vs of
                                         Just IntVar  -> IRVar v
                                         Just ListVar -> IRLst v  -- TODO: only valid if v is not evaluated!
                                         t -> error $ v ++ " is of unsupported type: " ++ show t
+makeIRLabel vs [Plus a b]          = IRAdd (makeIRLabel vs [a]) (makeIRLabel vs [b])
 makeIRLabel vs [Var (v, t)]        = error $ "All variables coming out of the parser should have type ListVar, but variable " ++ v ++ " had type " ++ show t
 makeIRLabel vs [atom]              = error $ "Unsupported atom: " ++ show atom
 makeIRLabel vs (x:xs)              = error "List type labels are not supported"

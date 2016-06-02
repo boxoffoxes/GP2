@@ -24,6 +24,7 @@ data Flag = NoOILR               -- switch off OILR indexing entirely
           | NoRecursion          -- don't apply looped rules recursively
           -- Output options
           | Dump String          -- dump an internal representation
+          | Evaluate             -- evaluate OILR code instead of compiling to C
           -- Compilation options
           | Compile32Bit         -- Generate 32 bit code
           -- Non-standard optimisations

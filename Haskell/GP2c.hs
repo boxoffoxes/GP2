@@ -18,7 +18,7 @@ import OILR4.OILROptim
 import OILR4.Spaces
 -- import OILR4.X86Backend
 import OILR4.CBackend
-
+-- import OILR4.Eval
 
 -- import GPSyntax -- debug code
 import ParseGraph
@@ -37,6 +37,8 @@ options = [ Option ['O'] ["no-oilr"] (NoArg NoOILR)
 
             Option ['D'] ["dump"] (ReqArg Dump "TYPE")
                     "Don't compile; dump code to stdout. Valid options: c, oilr, ir",
+            Option ['E'] ["eval"] (NoArg Evaluate)
+                    "Compile to OILR code and evaluate.",
 
             Option ['3'] ["32-bit"]  (NoArg Compile32Bit)
                     "Compile a 32-bit executable" ,

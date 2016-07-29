@@ -105,7 +105,7 @@ compileIns (BIN d0 d1 tgt)   = build ("BIN":[show n|n<-[d0,d1,tgt]])
 compileIns (BEN d0 d1 r0)    = error "Compilation not implemented"
 compileIns (BLO dst r0)      = build ["BLO", show dst, show r0]
 compileIns (NEC src tgt)     = build ["NEC", show src, show tgt]
-compileIns (CME reg)         = build ["CME", show reg]
+compileIns (CME reg col)     = build ["CME", show reg, show col]
 compileIns (CKL reg i)       = build ["CKL", show reg, show i]
 
 compileIns (TAR t)           = t ++ ":\n"

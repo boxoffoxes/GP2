@@ -43,7 +43,7 @@ edges g = concatMap edge $ allEdges g
     where
         edge (e, hl) = ABE (edgeNumber e) (nodeNumber $ source e) (nodeNumber $ target e) : edgeLabel e hl
         {- HACK! -1 indicates that backend should use most recently created element id. This will totally bite me one day. -}
-        edgeLabel e (HostLabel as Dashed) = CBL (-1) 1:compileAtoms (-1) as
+        edgeLabel e (HostLabel as Dashed) = CBL (-1) (definiteLookup Dashed colourIds):compileAtoms (-1) as
         edgeLabel _ _ = []
 
 

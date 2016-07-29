@@ -1,6 +1,6 @@
 #!/bin/bash
 
-GP2C_OPTS=""
+GP2C_OPTS="-3"
 GP2C="`pwd`/../gp2c $GP2C_OPTS"
 ISO="`pwd`/../IsoChecker"
 

@@ -42,8 +42,7 @@ long lastAlloc = 0;
 long recursionDepth = 0;
 void (*self)();
 
-char *colourNames[]   = { "", " # red", " # blue", " # green", " # grey" };
-char *edgeMarkNames[] = { "", " # dashed" };
+char *colourNames[]   = { "", " # red", " # blue", " # green", " # grey", " # dashed" };
 
 #define getElementById(id) &(g.pool[(id)])
 #define elementId(el) ((el)-g.pool)
@@ -999,6 +998,7 @@ void BAK() {
 #define CBL(r, c) setColour(reg(r), c)
 
 void bnd(Element **dst, DList **spc, DList **dl, long *pos) {
+    /* TODO: can we encode RST into this by checking if dst is null? */
 	*pos = *dl ? *pos : 0; 
 	*dl  = *dl ? *dl  : spc[0];
 	assert(*pos >= 0 && *pos < OILR_INDEX_SIZE );
@@ -1093,9 +1093,9 @@ void bnd(Element **dst, DList **spc, DList **dl, long *pos) {
 		if (!boolFlag) fail(); \
 	} while (0)
 
-#define CME(r) \
+#define CME(r, c) \
 	do { \
-		if (!cBits(reg(r))) { \
+		if (colour(reg(r))!=c) { \
 			boolFlag = 0; \
 			fail(); \
 		} \
@@ -1160,7 +1160,7 @@ void dumpEdge(FILE *file, Element *e) {
 	char label[16];
 	long sr=elementId(source(e)), tg=elementId(target(e));
 	char *lb = isLabelled(e) ? label : "empty";
-	char *cl = edgeMarkNames[colour(e)];
+	char *cl = colourNames[colour(e)];
 	sprintf(label, "%d", getLabel(e));
 	assert(unbound(e));
 	fprintf(file, "\t( e%ld, n%ld, n%ld, %s%s )\n", id, sr, tg, lb, cl);

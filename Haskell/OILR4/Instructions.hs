@@ -38,8 +38,7 @@ data DefBody = ProcBody [Instr]
     deriving (Show, Eq)
 
 data Instr =
-      OILR Int          -- Number of OILR indices
-    | REGS Int          -- Size of local register file
+      REGS Int          -- Size of local register file
     | RST Sid           -- Reset search-space state
     | SUC               -- Match success. Clean up after matchingthey, and possibly recurse
     | UBN Int           -- UnBiNd elements in n registers (possibly superfluous?)
@@ -55,16 +54,18 @@ data Instr =
     | CBL Dst Col       -- Colour Bound eLement
     | LBL Dst Int       -- Label Bound eLement with Int
 
-    -- Graph search
+    -- Dummy instructions used internally for constructing search but never emitted.
     | BND Dst Sid          -- Bind next unbound NoDe in Spc to Dst
     | BOE Dst Src Tgt      -- Bind Out Edge from Src to Tgt
     | BED Dst Reg Reg      -- Bind an EDge between Regs in either direction
     | BON Dst Dst Src      -- Bind Out-edge and Node by following one of Src's outgoing edges
     | BIN Dst Dst Tgt      -- Bind In-edge and Node by following one of Tgt's incoming edges
     | BEN Dst Dst Reg      -- Bind Edge and Node in either direction from Reg
-    | BLO Dst Reg          -- Bind a LOop on node in Reg
+    | BLO Dst Reg          -- Bind a LOop on node in Reg -}
+
     | NEC Src Tgt          -- Negative Edge Condition from Src to Tgt
-    | CME Reg              -- Check for Mark on Edge in Reg
+    | CME Reg Col          -- Check for Mark on Element in Reg
+    | CLX Reg              -- Check Label eXists -- does value in Reg have a non-empty label?
     | CKL Reg Int          -- ChecK Label of element in Reg has value Val
 
     -- Label arithmetic
@@ -75,8 +76,8 @@ data Instr =
 
     -- Definitions & program structure
     | DEF Id               -- DEFine function Idopen source dev site
-    | ALAP Id              -- call Id for As Long As Possible
     | ONCE Id              -- call Id ONCE
+    | ALAP Id              -- call Id for As Long As Possible
     | TAR Target           -- jump TARget
     | BRZ Target           -- BRanch if Zero (i.e. if bool flag is false)
     | BNZ Target           -- Branch if Non-Zero
@@ -86,10 +87,10 @@ data Instr =
     | RTZ                  -- ReTurn if Zero
     | RNZ                  -- Return if Non-Zero
 
-    -- Backtracking
-    | BBT                  -- Begin BackTracking section
+    -- Transactional code blocks
+    | TRN                  -- Begin BackTracking section
     | BAK                  -- unconditionally roll-BAcK backtracking section changes
-    | EBT                  -- End BackTracking secion: commit if flag is true, rollback otherwise
+    | ETR                  -- End BackTracking secion: commit if flag is true, rollback otherwise
     -- There is no rollback command. This needs to be done manually with reverse rules.
 
     -- Graph oracle
@@ -114,7 +115,6 @@ data Instr =
 
     -- These are new instructions to support the graph oracle ("ORIcL"?)
 --    | NEED Int Spc         -- assert that a rule requires there to be Int nodes in Spc
---    | NDFT Int Feature     -- assert that a rule requires there to be Int graph Features
 --    | CHFT Int Feature     -- increase or decrease the number of available Feature by Int
 --    | STFT Int Feature     -- set the number of available Feature to be Int
     deriving (Show, Eq)
@@ -161,27 +161,6 @@ resetSpcsFor :: [Instr] -> [Instr]
 resetSpcsFor (BND _ s:is) = RST s:resetSpcsFor is
 resetSpcsFor (_:is) = resetSpcsFor is
 resetSpcsFor [] = []
-
-
-extends :: Int -> Instr -> Bool
-extends r (BND d _)   = r==d
-extends r (BOE _ s t) = r==s || r==t
-extends r (BED _ a b) = r==a || r==b
-extends _ _ = False
-
-
-see :: ([Int], [Int]) -> Int -> ([Int], [Int])
-see (s, u) n = ( (n:s), u )
-
-use :: ([Int], [Int]) -> Int -> ([Int], [Int])
-use (s, u) n = ( s \\ [n] , n:u )
-
-seen :: ([Int], [Int]) -> Int -> Bool
-seen (s, _) n = n `elem` s
-
-used :: ([Int], [Int]) -> Int -> Bool
-used (_, u) n = n `elem` u
-
 
 edgeTo n (BOE _ _ t) =  n==t
 edgeTo _ _ = False
@@ -275,9 +254,9 @@ diffs regs r (IREdge ib cb lb bb sb tb) (IREdge ia ca la ba sa ta)
     -- i = id, c = colour, l = label, b = bidi, s = source node, t = target node
     | sb == sa && tb == ta =
         case bb == ba || ba of 
-        True -> concat [ if cb /= ca then [CBL r $ definiteLookup ca edgeColourIds] else []
+        True -> concat [ if cb /= ca then [CBL r $ definiteLookup ca colourIds] else []
                        , if lb /= la then [LBL r 0] else [] ]  -- TODO: label support
-        False -> [ DBE r, abe regs r sa ta, CBL r $ definiteLookup ca edgeColourIds, LBL r 0] -- TODO: label support
+        False -> [ DBE r, abe regs r sa ta, CBL r $ definiteLookup ca colourIds, LBL r 0] -- TODO: label support
     | otherwise            = error "Edge source and target should not change"
 
 mkLabelTest :: Reg -> IRLabel -> [Instr]
@@ -287,7 +266,7 @@ mkLabelTest r (IRInt i) = [CKL r i]
 mkLabelTest r l = error $ "Unimplemented label format: " ++ show l
 
 mkEdgeTests :: Reg -> IRLabel -> Colour -> [Instr]
-mkEdgeTests r l Dashed = CME r:mkLabelTest r l
+mkEdgeTests r l Dashed = CME r (definiteLookup Dashed colourIds):mkLabelTest r l
 mkEdgeTests r l _ = mkLabelTest r l
 
 {-              | IREdge  Id  Colour  IRLabel  Bool  Id Id -}
@@ -320,7 +299,7 @@ compileExpr i (IRTry cn th el) = concat [ compileExpr (i+1) cn
                                         , [ brn i "endT" , tar i "elseT" ]
                                         , compileExpr (i+1) el
                                         , [ tar i "endT" ] ]
-compileExpr i (IRTrns e)     = concat [ [BBT] , compileExpr (i+1) e , [EBT] ]
+compileExpr i (IRTrns e)     = concat [ [TRN] , compileExpr (i+1) e , [ETR] ]
 compileExpr i (IRSeqn es)    = compileSequence (i+1) es
 compileExpr i (IRLoop (IRRuleSet [r])) = [ ALAP (mangle r) ]
 compileExpr i (IRLoop e)     = concat [ [tar i "bgn" ],

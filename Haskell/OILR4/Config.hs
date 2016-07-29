@@ -62,9 +62,8 @@ colourIds = [ (Uncoloured, 0)
             , (Red       , 1)
             , (Blue      , 2)
             , (Green     , 3)
-            , (Grey      , 4) ]
-edgeColourIds :: Mapping Colour Int
-edgeColourIds = [ (Uncoloured, 0) , (Dashed, 1) ]
+            , (Grey      , 4)
+            , (Dashed    , 5) ]
 
 
 configureOilrMachine :: [Flag] -> [OilrIR] -> OilrConfig

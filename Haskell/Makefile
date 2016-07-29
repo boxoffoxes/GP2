@@ -24,7 +24,7 @@ tags :
 	echo ":ctags" | ghc -v0 Main.hs
 
 clean :
-	rm -f *.o OILR3/*.o $(TARGETS)
+	rm -f *.{o,hi} OILR4/*.{o,hi} $(TARGETS)
 
 sloc : OILR4/oilrrt.c
 	grep -v '\s*//' $< | grep -v '^\s*$$' | wc -l

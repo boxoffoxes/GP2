@@ -1,0 +1,11 @@
+Main = rule
+
+rule (a:int) [
+	(n1, a)
+|
+] => [
+	(n1, a)
+	(n2, a)
+|
+]
+interface = { n1 }

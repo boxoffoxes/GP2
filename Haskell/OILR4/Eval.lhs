@@ -36,9 +36,11 @@ import OILR4.Instructions hiding (Src, Tgt, Sid)
 
 import GPSyntax
 
+import Prelude hiding (fail)
 import Mapping
 import Data.List
 import Data.Maybe
+import Data.Bits
 \end{code}
 
 The first line declares that we are using the \emph{NamedFieldPuns} GHC
@@ -416,7 +418,7 @@ executed.
     pc :: Addr,
 \end{code}
 
-\#\#\#\#\#\# Return stack \{-\} The return stack \(RS\) is a list of
+\#\#\#\#\# Return stack \{-\} The return stack \(RS\) is a list of
 return addresses of rule- and procedure-calls. As \(RS\) has strict
 last-in-first-out semantics, is not amenable to inspection or
 modification by the compiled program, and is represented here as a list,
@@ -658,7 +660,11 @@ Instructions will be motivated and described. Following this we will
 look at the implementation of the helper functions we introduced in the
 Instructions section.
 
-Table \ref{todo} summarises the numbers of each type of operation.
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{!--} \DataTypeTok{Table} \NormalTok{\textbackslash{}ref\{todo\} summarises the numbers }\KeywordTok{of} \NormalTok{each }\KeywordTok{type} \KeywordTok{of} \NormalTok{operation}\FunctionTok{.}
+\end{Highlighting}
+\end{Shaded}
 
 \input{Tables/instruction_count.tex}
 
@@ -917,7 +923,7 @@ which always discards the results of its predicate term, is an
 unconditional \texttt{rollback} micro-op.
 
 \begin{code}
-decode BAK vm = vm { ts=tail ts', g=g' }
+decode BAK vm@(VM {ts,g}) = vm { ts=tail ts', g=g' }
     where (tr, ts') = break (/=tSentinel) ts
           g' = rollback g tr
 \end{code}
@@ -999,8 +1005,8 @@ search space contains no unbound nodes, then the instruction fails. This
 contingency will be checked in the definition of \texttt{fillFromSS}.
 
 \begin{code}
-decode (BND r ss) vm =
-    case getReg regs r of
+decode (BND r ss) vm@(VM {regs}) =
+    case getReg r regs of
         []   -> (pushF . bind r . fillFromSS r ss) vm
         [n]  -> (fail . unbind r ) vm
         ns   -> (pushF . bind r . unbind r) vm
@@ -1014,8 +1020,8 @@ search space, but instead use the intersection of the out-edges of the
 source node and the in-edges of the target.
 
 \begin{code}
-decode (BOE r0 r1 r2) vm =
-    case getReg regs r0 of
+decode (BOE r0 r1 r2) vm@(VM {regs}) =
+    case getReg r0 regs of
         []   -> (pushF . bind r0 . fillFromBtw r0 r1 r2) vm
         [n]  -> (fail . unbind r0) vm
         ns   -> (pushF . bind r0 . unbind r0) vm
@@ -1037,8 +1043,8 @@ requires subtly different behaviour.
 \end{Shaded}
 
 \begin{code}
-decode (BON r0 r1 r2) vm = 
-    case getReg regs r0 of
+decode (BON r0 r1 r2) vm@(VM {regs}) = 
+    case getReg r0 regs of
         []  -> (pushF . bind r0 . bind r1 . fill2FromOutA r0 r1 r2) vm
         [n] -> (fail . unbind r0 . unbind r1) vm
         ns  -> (pushF . bind r0 . bind r1 . unbind r0 . unbind r1) vm
@@ -1049,8 +1055,8 @@ decode (BON r0 r1 r2) vm =
 Let us do the same again for in-edges to an already bound node.
 
 \begin{code}
-decode (BIN r0 r1 r2) vm =
-    case getReg regs r0 of
+decode (BIN r0 r1 r2) vm@(VM {regs}) =
+    case getReg r0 regs of
         []  -> (pushF . bind r0 . bind r1 . fill2FromInA r0 r1 r2) vm
         [n] -> (fail . unbind r0 . unbind r1) vm
         ns  -> (pushF . bind r0 . bind r1 . unbind r0 . unbind r1) vm
@@ -1062,8 +1068,8 @@ Giving looped-edges special status will facilitate some performance
 tuning opportunities later when we come to write the run-time system.
 
 \begin{code}
-decode (BLO r0 r1) vm = 
-    case getReg regs r0 of
+decode (BLO r0 r1) vm@(VM {regs}) = 
+    case getReg r0 regs of
         []   -> (pushF . bind r0 . fillFromLoops r0 r1) vm
         [n]  -> (fail . unbind r0) vm
         ns   -> (pushF . bind r0 . unbind r0) vm
@@ -1081,14 +1087,14 @@ more uniform, by avoiding the need to mix the stack-based branching of
 rules with the explicit branching used in procedures.
 
 \begin{code}
-decode (BED r0 r1 r2) vm =
-    case getReg regs r0 of
+decode (BED r0 r1 r2) vm@(VM {regs}) =
+    case getReg r0 regs of
         []   -> (pushF . bind r0 . fillFromA r0 r1 r2) vm
         [n]  -> (fail . unbind r0) vm
         ns   -> (pushF . bind r0 . unbind r0) vm
 
-decode (BEN r0 r1 r2) vm =
-    case getReg regs r0 of
+decode (BEN r0 r1 r2) vm@(VM {regs}) =
+    case getReg r0 regs of
         []  -> (pushF . bind r0 . bind r1 . fill2FromA r0 r1 r2) vm
         [n] -> (fail . unbind r0 . unbind r1) vm
         ns  -> (pushF . bind r0 . bind r1 . unbind r0 . unbind r1) vm
@@ -1129,8 +1135,8 @@ A common requirement in graph transformation is checking for the
 \texttt{BOE} instruction (see \ref{todo}).
 
 \begin{code}
-decode (NEC r0 r1) vm =
-    case btw r0 r1 of
+decode (NEC r0 r1) vm@(VM {regs,g}) =
+    case btw (getReg r0 regs) (getReg r1 regs) g of
         [] -> vm
         _  -> fail vm
 \end{code}
@@ -1149,28 +1155,12 @@ a constant.
 
 \begin{code}
 decode (CME r c) vm@(VM {regs}) =
-    if mark . head . getReg regs r == c 
+    if (mark $ head $ getReg r regs) == c 
         then vm
         else fail vm
 \end{code}
 
-\#\#\#\#\# CLX \emph{check label exists} \{-\}
-
-The issue is more complex with labels. Guaranteeing the presence or
-absence of a label during compile-time search space construction is
-straightforward, as we will see when we discuss the process in section
-\ref{todo}. However for edges and for the nodes we reach by following
-them, we must explicitly test for the existence (or non-existence) of a
-label.
-
-\begin{code}
-decode (CLX r bool) vm@(VM { regs }) =
-    if labelled . head . getReg reg r == bool
-        then vm 
-        else fail vm
-\end{code}
-
-\#\#\#\#\# CLB \emph{check label} \{-\}
+\#\#\#\#\# CKL \emph{check label} \{-\}
 
 Unfortunately as the labels themselves are drawn from a potentially
 unbounded alphabet (integers), \emph{a priori} guarantees concerning a
@@ -1179,10 +1169,10 @@ tests of labels are potentially required to assure ourselves of the
 correctness of a match, even after a \texttt{BND} instruction.
 
 \begin{code}
-decode (CKL r n) vm =
-    if label . head . getReg reg r == Just n
-        then vm
-        else fail vm
+decode (CKL r b n) vm@(VM {regs}) =
+    case elbl $ head $ getReg r regs of
+        Nothing -> if b    then vm else fail vm
+        Just l  -> if l==n then vm else fail vm
 \end{code}
 
 \begin{Shaded}
@@ -1205,7 +1195,10 @@ operate on the new element.
 Create a new node and bind it to register \texttt{r}.
 
 \begin{code}
-decode (ABN r) vm = (bind r . createN) vm
+decode (ABN r) vm =
+    change r (\[] -> [Nod id Nothing c False]) vm'
+    where (id, vm') = newId vm
+          c = definiteLookup Uncoloured colourIds
 \end{code}
 
 \#\#\#\#\# ABE \emph{add and bind edge} \{-\}
@@ -1214,7 +1207,12 @@ Create a new edge from the node bound in \texttt{r1} to the node bound
 in \texttt{r2}, and bind the resulting edge in \texttt{r0}.
 
 \begin{code}
-decode (ABE r0 r1 r2) vm = (bind r0 . createA r1 r2) vm
+decode (ABE r0 r1 r2) vm =
+    change r0 (\[] -> [Edg id Nothing c src tgt]) vm'
+    where (id, vm') = newId vm
+          c = definiteLookup Uncoloured colourIds
+          src = eid $ head $ getReg r1 $ regs vm
+          tgt = eid $ head $ getReg r2 $ regs vm
 \end{code}
 
 \#\#\#\#\# ABL \emph{Add and bind loop} \{-\}
@@ -1223,7 +1221,8 @@ Create a new looped-edge on the node bound in \texttt{r1}, and bind the
 new edge in \texttt{r0}.
 
 \begin{code}
-decode (ABL r0 r1) vm = (bind r0 . createA r1 r1) vm
+decode (ABL r0 r1) vm =
+    decode (ABE r0 r1 r1) vm
 \end{code}
 
 \#\#\# Graph element deletion
@@ -1239,9 +1238,12 @@ requirements and invariants associated with each type of graph element.
 loop}, DBE \emph{delete bound edge} \{-\}
 
 \begin{code}
-decode (DBN r) vm = ( deleteE r . unbind r ) vm
-decode (DBL r) vm = ( deleteE r . unbind r ) vm
-decode (DBE r) vm = ( deleteE r . unbind r ) vm
+decode (DBN r) vm@(VM {regs,ts}) =
+    change r (\es -> []) vm
+decode (DBL r) vm@(VM {regs,ts}) = 
+    change r (\es -> []) vm
+decode (DBE r) vm@(VM {regs,ts}) = 
+    change r (\es -> []) vm
 \end{code}
 
 \#\#\# Graph element attribute setting
@@ -1255,7 +1257,8 @@ Sets the root-flag on the node bound in \texttt{r} to be the boolean
 value \texttt{b}.
 
 \begin{code}
-decode (RBN r b) vm = ( setR r b ) vm
+decode (RBN r b) vm@(VM {regs, ts}) = 
+    change r (\(e:es) -> e {rt=b}:es) vm
 \end{code}
 
 \#\#\#\#\# CBL \emph{set colour of bound element} \{-\}
@@ -1266,7 +1269,8 @@ compiler to only emit marks appropriate to the type of graph element
 being modified.
 
 \begin{code}
-decode (CBL r c) vm = ( setC r c ) vm
+decode (CBL r c) vm@(VM {regs}) = 
+    change r (\(e:es) -> e {mark=c}:es) vm
 \end{code}
 
 \#\#\#\#\# LBL \emph{label bound element} \{-\}
@@ -1275,7 +1279,8 @@ Sets the label on the element bound in \texttt{r} to the integer value
 \texttt{n}.
 
 \begin{code}
-decode (LBL r n) vm = ( setB r . lit n ) vm
+decode (LBL r n) vm =
+    change r (\(e:es) -> e { elbl=Just n }:es) vm
 \end{code}
 
 \begin{Shaded}
@@ -1307,42 +1312,249 @@ Unbind elements bound into the register file by this rule, where
 decode (UBN n) vm@(VM {regs,g}) =
     vm { regs=regs', g=g' }
     where (xs, regs') = splitAt n regs
-          g' = [ e | (e:_) <- xs ] ++ g 
+          g' = [ e | (_, e:_) <- xs ] ++ g 
 \end{code}
 
 \#\# Helper functions
 
-\texttt{bind} takes the graph element identified by the value in \(WR\),
-removes it from the host graph in order to preserve match injectivity,
-and places it in the specified register.
+\texttt{bind} ensures match injectivity by removing the element in the
+head position of register \(r\) from the host graph.
 
 \begin{code}
-unbind :: RegId -> VM -> VM
-unbind r vm@(VM {regs,g}) = vm {regs=regs',g=e:g}
-    where regs' = setReg r es regs
-          e:es  = getReg r regs
-
 bind :: RegId -> VM -> VM
 bind r vm@(VM {regs,g}) = vm { g=g' }
     where g' = g \\ [e]
           e:es  = getReg r regs
 \end{code}
 
+\texttt{unbind} removes the bound head element held in a register and
+restores it to the host graph.
+
+\begin{code}
+unbind :: RegId -> VM -> VM
+unbind r vm@(VM {regs,g}) = vm {regs=regs',g=e:g}
+    where regs' = setReg r es regs
+          e:es  = getReg r regs
+\end{code}
+
 \texttt{getReg} takes a register id and local register file and returns
-the contents of the register. Attempting to get the value of an empty
-local register is an error.
+the contents of the register. Attempting to access a register that was
+not previously allocated with a \texttt{REGS} instruction is undefined
+behaviour.
 
 \begin{code}
 getReg :: RegId -> RegFile -> [Elem]
-getReg r rs = definiteLookup r rs
+getReg r regs = definiteLookup r regs
 \end{code}
 
-Of course, we need to place a value into a register.
+\texttt{setReg} sets the value of register \(r\) in register file
+\(regs\) to be \(val\), returning the modified register file.
 
 \begin{code}
 setReg :: RegId -> [Elem] -> RegFile -> RegFile
-setReg r val rs = [ (k,v') | (k,v) <- rs
+setReg r val regs = [ (k,v') | (k,v) <- regs
                   , let v' = if r==k then val else v ]
+\end{code}
+
+\texttt{change} applies an arbitrary modification, defined by the
+function \(f\), to the contents of the local register file, logging the
+change in the transaction stack. Recall that elements are removed from
+the host graph when bound to preserve injectivity, so the changes will
+be propagated back to the host graph when the register contents are
+unbound.
+
+\begin{code}
+change :: RegId -> ([Elem] -> [Elem]) -> VM -> VM
+change r f vm@(VM {regs, ts}) =
+    case (es, f es) of
+        ([], e:es')   -> vm { regs=setReg r (e:es') regs
+                            , ts=(Nothing, Just e):ts }
+        (e:_, e':es') -> vm { regs=setReg r (e':es') regs
+                            , ts=(Just e, Just e'):ts }
+        (e:es', [])   -> vm { regs=setReg r [] regs
+                            , ts=(Just e, Nothing):ts }
+    where es = getReg r regs
+\end{code}
+
+\texttt{newId} allocates a new element id from the auto-increment
+register, returning the id, and a modified copy of the abstract machine.
+
+\begin{code}
+newId :: VM -> (ElemId, VM)
+newId vm@(VM {ai=id:ids}) = (id, vm {ai=ids})
+\end{code}
+
+\texttt{fillFromSS} fills register \(r\) from search-space \(s\).
+
+\begin{code}
+fillFromSS :: RegId -> SpcId -> VM -> VM
+fillFromSS r s vm@(VM {regs,ss,g}) =
+    vm { regs=setReg r ns regs }
+    where sigs = definiteLookup s ss
+          ns   = getElemsBySigs sigs g
+\end{code}
+
+\begin{code}
+getElemsBySigs :: [Sig] -> Graph -> [Elem]
+getElemsBySigs sigs g =
+    [ e | e <- nodes g , signature e g `elem` sigs ]
+\end{code}
+
+\begin{code}
+signature :: Elem -> Graph -> Sig
+signature (Nod id lbl m rt) g =
+    r + l `shift` 1
+      + i `shift` 3
+      + o `shift` 5
+      + m `shift` 7
+      + b `shift` 10
+    where b = if lbl == Nothing then 0 else 1
+          o = min (length [ a | a <- edges g
+                              , src a == id ] - l) (4-1)
+          i = min (length [ a | a <- edges g
+                              , tgt a == id ] - l) (4-1)
+          l = min (length [ a | a <- edges g
+                              ,  src a == id
+                              && tgt a == id ]) (4-1)
+          r = if rt then 1 else 0
+\end{code}
+
+\begin{code}
+btw :: [Elem] -> [Elem] -> Graph -> [Elem]
+btw (Nod s _ _ _:_) (Nod t _ _ _:_) g =
+    [ a | a <- edges g , src a == s && tgt a == t ]
+\end{code}
+
+\begin{code}
+fillFromBtw :: RegId -> RegId -> RegId -> VM -> VM
+fillFromBtw r0 s t vm@(VM {regs,g}) =
+    vm { regs=setReg r0 as regs }
+    where as = btw (getReg s regs) (getReg t regs) g
+\end{code}
+
+\begin{code}
+fillFromLoops :: RegId -> RegId -> VM -> VM
+fillFromLoops r0 n vm@(VM {regs,g}) =
+    vm { regs=setReg r0 ls regs }
+    where ls = btw (getReg n regs) (getReg n regs) g
+\end{code}
+
+\begin{code}
+fill2FromOutA :: RegId -> RegId -> RegId -> VM -> VM 
+fill2FromOutA r0 r1 s vm@(VM {regs,g}) =
+    vm { regs=setReg r1 ns $ setReg r0 as regs }
+    where (Nod id _ _ _):_ = getReg s regs
+          as = [ a | a <- edges g , src a == id && tgt a /= id ]
+          ns = [ n | (Edg _ _ _ _ t) <- as
+                   , let n = getElemById t g ]
+\end{code}
+
+\begin{code}
+fill2FromInA :: RegId -> RegId -> RegId -> VM -> VM 
+fill2FromInA r0 r1 t vm@(VM {regs,g}) =
+    vm { regs=setReg r1 ss $ setReg r0 as regs }
+    where (Nod id _ _ _):_ = getReg t regs
+          as = [ a | a <- edges g , tgt a == id && src a /= id ]
+          ss = [ n | (Edg _ _ _ s _) <- as
+                   , let n = getElemById s g ]
+\end{code}
+
+\begin{code}
+fillFromA :: RegId -> RegId -> RegId -> VM -> VM 
+fillFromA r0 r1 s vm@(VM {regs,g}) =
+    vm { regs=setReg r0 as regs }
+    where (Nod id _ _ _):_ = getReg s regs
+          as = [ a | a <- edges g , src a == id ]
+\end{code}
+
+\begin{code}
+fill2FromA :: RegId -> RegId -> RegId -> VM -> VM 
+fill2FromA r0 r1 n vm@(VM {regs,g}) =
+    vm { regs=setReg r0 as regs }
+    where (Nod id _ _ _):_ = getReg n regs
+          as = [ a | a <- edges g , ( src a == id || tgt a == id ) && src a /= tgt a ]
+          ns = [ n | (Edg _ _ _ s t) <- as
+                   , let n = getElemById (if s==id then t else s) g]
+\end{code}
+
+\begin{code}
+edges :: Graph -> [Elem]
+edges g = [ e | e <- g , isEdge e ]
+    where isEdge (Edg _ _ _ _ _) = True
+          isEdge _               = False
+\end{code}
+
+\begin{code}
+nodes :: Graph -> [Elem]
+nodes g = [ e | e <- g, isNode e ]
+    where isNode (Nod _ _ _ _) = True
+          isNode _             = False
+\end{code}
+
+\texttt{getElemById} returns the element with the unique identifier
+\texttt{id}.
+
+\begin{code}
+getElemById :: ElemId -> [Elem] -> Elem
+getElemById id g = fromJust $ find (\e -> id == eid e) g
+\end{code}
+
+Providing an implementation for \texttt{findBranchTarget} becomes a case
+of searching the program text for a matching \texttt{TAR} or
+\texttt{DEF} instruction.
+
+\begin{code}
+findBranchTarget :: JLabel -> Program -> Addr
+findBranchTarget jl txt = fromJust $ findIndex findI txt
+      where findI (TAR x) = x == jl
+            findI (DEF x) = x == jl
+\end{code}
+
+Rolling-back a transaction is slightly more complicated; take each
+change on the transaction stack and undo it, until a sentinel is found.
+
+\begin{code}
+rollback :: Graph -> [Change] -> Graph
+rollback g ((Just b,Nothing):cs) = rollback (b:g) cs
+rollback g ((Nothing,Just a):cs) = rollback (g\\[a]) cs
+rollback g ((Just b, Just a):cs) = rollback (b:(g\\[a])) cs
+rollback g [] = g
+\end{code}
+
+The only thing left to do in transaction handling is to define the
+sentinel.
+
+To satisfy Haskell's type system, both sides of the sentinel must be of
+type \texttt{Maybe\ Elem}. The obvious choice is therefore the
+null-change, from \texttt{Nothing} to \texttt{Nothing}. This is also in
+keeping with the common programming language idiom of using a null value
+to mark the end of a non-counted sequence (c.f. C's null-terminated
+strings and Forth's null-terminated dictionary).
+
+\begin{code}
+tSentinel :: Change
+tSentinel = (Nothing,Nothing)
+\end{code}
+
+\#\#\# The failure stack
+
+\texttt{fail} inspects the boolean flag, and if it is false pops the top
+value from the failure stack to \(PC\), which either jumps back to the
+previous match instruction (or exits the rule in the case of the first
+match instruction). The boolean flag is left unmodified.
+
+\begin{code}
+fail :: VM -> VM
+fail vm@(VM {fs=(addr:as)}) =
+    vm { pc=addr, fs=as }
+\end{code}
+
+On success, a matching instruction needs to push its own address to
+\(FS\) so that future instructions can return to it on failure.
+
+\begin{code}
+pushF :: VM -> VM
+pushF vm@(VM {fs,pc}) = vm { fs=pc:fs }
 \end{code}
 
 \#\#\# Putting it all together

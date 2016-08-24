@@ -1,7 +1,11 @@
 #!/bin/bash
 
-GP2C_OPTS="-3"
-GP2C="`pwd`/../gp2c $GP2C_OPTS"
+if [ `uname -m` == "i686" ]; then
+	GP2C_OPTS="-3"
+else
+	GP2C_OPTS=""
+fi
+GP2C="`pwd`/../gp2c -R $GP2C_OPTS"
 ISO="`pwd`/../IsoChecker"
 
 

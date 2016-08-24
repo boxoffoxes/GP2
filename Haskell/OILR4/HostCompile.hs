@@ -34,7 +34,7 @@ nodes g = concatMap node $ allNodes g
         node (n, HostNode _ root (HostLabel as c)) =
             ABN (nodeNumber n)
             : (if root then RBN (nodeNumber n) True else NOP)
-            : (if c == Uncoloured then NOP else CBL (nodeNumber n) (definiteLookup c colourIds ) )
+            : (if c == Uncoloured then NOP else MBL (nodeNumber n) (definiteLookup c colourIds ) )
             : compileAtoms (nodeNumber n) as
 
 
@@ -43,7 +43,7 @@ edges g = concatMap edge $ allEdges g
     where
         edge (e, hl) = ABE (edgeNumber e) (nodeNumber $ source e) (nodeNumber $ target e) : edgeLabel e hl
         {- HACK! -1 indicates that backend should use most recently created element id. This will totally bite me one day. -}
-        edgeLabel e (HostLabel as Dashed) = CBL (-1) (definiteLookup Dashed colourIds):compileAtoms (-1) as
+        edgeLabel e (HostLabel as Dashed) = MBL (-1) (definiteLookup Dashed colourIds):compileAtoms (-1) as
         edgeLabel _ _ = []
 
 

@@ -51,8 +51,8 @@ compileHost is = concat [ "\n\n", decl "_HOST", " {\n", build [ "addNodes", show
           makeHostElem (ABN _)     (n, cs) = (n+1, cs)
           makeHostElem (ABE _ s t) (n, cs) = (n, build ["addEdgeById", show s, show t]:cs)
           makeHostElem (RBN id v)  (n, cs) = (n, build ["setRootById", show id]:cs)
-          makeHostElem (CBL (-1) c) (n, cs)= (n, build ["setColourById", "g.freeId-1", show c]:cs)
-          makeHostElem (CBL id c)  (n, cs) = (n, build ["setColourById", show id, show c]:cs)
+          makeHostElem (MBL (-1) c) (n, cs)= (n, build ["setColourById", "g.freeId-1", show c]:cs)
+          makeHostElem (MBL id c)  (n, cs) = (n, build ["setColourById", show id, show c]:cs)
           makeHostElem (LBL (-1) i) (n, cs)= (n, build ["setLabelById", "g.freeId-1", show i]:cs)
           makeHostElem (LBL id i)  (n, cs) = (n, build ["setLabelById", show id, show i]:cs)
           makeHostElem NOP         (n, cs) = (n, cs)
@@ -66,7 +66,7 @@ compileDecl (name, _) = decl name ++ ";\n"
 compileDefn :: Definition -> String
 compileDefn (name, (pre, RuleBody lhs rhs, post)) = concat $
     ('\n':'\n':(decl name ++ " {\n\tsetCurrentRule(" ++ show name ++ ");\n")):[ compileIns i
-                        | i <- concat [pre, lhs, rhs, post] ]
+                        | i <- concat [pre, concat lhs, rhs, post] ]
 compileDefn (name, (pre, ProcBody is, post)) = concat $
     ('\n':'\n':(decl name ++ " {\n")):[ compileIns i
                         | i <- concat [pre, is, post] ]
@@ -83,7 +83,7 @@ compileIns (ALAP name)       = build ["ALAP", name]
 compileIns (REGS n)          = build ["REGS", show n]
 -- compileIns (SUC) = error "Compilation not implemented"
 compileIns (UBN n)           = build ["UBN", show n]
-compileIns (RST ss)          = build ["RST", spcName ss]
+-- compileIns (RST ss)          = build ["RST", spcName ss]
 
 compileIns (ABN dst)         = build ["ABN", show dst]
 compileIns (ABE dst src tgt) = build ("ABE":[show n|n<-[dst,src,tgt]])
@@ -94,7 +94,7 @@ compileIns (DBL reg)         = build ["DBL", show reg]
 
 compileIns (RBN dst bool)    = build ["RBN", show dst, show bool]
 
-compileIns (CBL reg c)       = build ["CBL", show reg, show c]
+compileIns (MBL reg c)       = build ["MBL", show reg, show c]
 compileIns (LBL dst n)       = error "Compilation not implemented"
 
 compileIns (BND dst ss)      = build ["BND", show dst, spcName ss]
@@ -105,8 +105,9 @@ compileIns (BIN d0 d1 tgt)   = build ("BIN":[show n|n<-[d0,d1,tgt]])
 compileIns (BEN d0 d1 r0)    = error "Compilation not implemented"
 compileIns (BLO dst r0)      = build ["BLO", show dst, show r0]
 compileIns (NEC src tgt)     = build ["NEC", show src, show tgt]
-compileIns (CME reg col)     = build ["CME", show reg, show col]
-compileIns (CKL reg i)       = build ["CKL", show reg, show i]
+compileIns (CKM reg col)     = build ["CKM", show reg, show col]
+compileIns (CKB reg bool i)  = build ["CKB", show reg, if bool then "1" else "0", show i]
+compileIns (CKR reg bool)    = build ["CKR", show reg, if bool then "1" else "0"]
 
 compileIns (TAR t)           = t ++ ":\n"
 compileIns (BRZ t)           = build ["BRZ", t]

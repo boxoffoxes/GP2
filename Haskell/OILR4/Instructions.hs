@@ -34,13 +34,13 @@ type Prog = [Definition]
 type Definition = ( String,  ([Instr], DefBody, [Instr]) )
 data DefBody = ProcBody [Instr]
              --          lhs     rhs
-             | RuleBody [Instr] [Instr]
+             | RuleBody [[Instr]] [Instr]
     deriving (Show, Eq)
 
 data Instr =
       REGS Int          -- Size of local register file
-    | RST Sid           -- Reset search-space state
-    | SUC               -- Match success. Clean up after matchingthey, and possibly recurse
+    -- | RST Sid           -- Reset search-space state
+    -- | SUC               -- Match success. Clean up after matchingthey, and possibly recurse
     | UBN Int           -- UnBiNd elements in n registers (possibly superfluous?)
     -- Graph modification
     | ABN Dst           -- Add and Bind Node to register Dst
@@ -51,7 +51,7 @@ data Instr =
     | DBE Dst           -- Delete Bound Node
     
     | RBN Dst Bool      -- set Root on Bound Node to Bool
-    | CBL Dst Col       -- Colour Bound eLement
+    | MBL Dst Col       -- Mark Bound eLement
     | LBL Dst Int       -- Label Bound eLement with Int
 
     -- Dummy instructions used internally for constructing search but never emitted.
@@ -64,9 +64,12 @@ data Instr =
     | BLO Dst Reg          -- Bind a LOop on node in Reg -}
 
     | NEC Src Tgt          -- Negative Edge Condition from Src to Tgt
-    | CME Reg Col          -- Check for Mark on Element in Reg
-    | CLX Reg              -- Check Label eXists -- does value in Reg have a non-empty label?
-    | CKL Reg Int          -- ChecK Label of element in Reg has value Val
+    | CKM Reg Col          -- Check Mark on element in Reg is Col
+    | CKB Reg Bool Int     -- ChecK existence of Label of element in Reg is Bool and has value Val
+    | CKR Reg Bool         -- Check Root-flag is Bool
+    | CKO Reg Int          -- Check Out-degree of node in Reg is Int
+    | CKI Reg Int          -- Check In-degree of node in Reg is Int
+    | CKL Reg Int          -- Check Loop-degree of node in Reg is Int
 
     -- Label arithmetic
     | CLL Dst Src          -- Copy eLement Label from Src to Dst
@@ -124,7 +127,7 @@ prettyProg :: Prog -> String
 prettyProg prog = intercalate "\n" $ map prettyDefn prog
     where prettyDefn (id, (pre, body, post)) = '\n':id ++ (intercalate "\n\t" $ ":":(map show $ concat [pre, smoosh body, post]))
           smoosh (ProcBody is) = is
-          smoosh (RuleBody lhs rhs) = concat [lhs, rhs]
+          smoosh (RuleBody lhs rhs) = concat [concat lhs, rhs]
 
 compileProg :: OilrConfig -> [OilrIR] -> (OilrConfig, Prog)
 compileProg cfg ir = foldr compile (cfg, []) ir
@@ -151,131 +154,177 @@ compileRule name cfg ms = (defn, cfg')
                         then makeOracle
                         else (\_ -> [])
           pre  = [REGS (length regs)] ++ oracle lhs
-          body = RuleBody (merger $ sorter $ reverse lhs) (SUC:reverse rhs)
+          body = RuleBody (merger $ sorter $ reverse lhs) (reverse rhs)
           post = concat [ [UBN (length regs)]
-                        , resetSpcsFor lhs
+                        -- , concat rhs
                         , [RET] ]
-          (cfg', regs, RuleBody lhs rhs) = foldr compileMod (cfg, [], nullBody) $ reverse ms
+          (cfg', vars, regs, RuleBody lhs rhs) = foldr compileMod (cfg, [], [], nullBody) $ reverse ms
 
-resetSpcsFor :: [Instr] -> [Instr]
-resetSpcsFor (BND _ s:is) = RST s:resetSpcsFor is
-resetSpcsFor (_:is) = resetSpcsFor is
-resetSpcsFor [] = []
 
-edgeTo n (BOE _ _ t) =  n==t
+edgeTo :: Reg -> [Instr] -> Bool
+edgeTo n (BOE _ _ t:_) =  n==t
 edgeTo _ _ = False
 
-edgeFrom n (BOE _ s _) =  n==s
+edgeFrom :: Reg -> [Instr] -> Bool
+edgeFrom n (BOE _ s _:_) =  n==s
 edgeFrom _ _ = False
 
 {- Yet Another Merge Attempt! -}
-yama acc seen (i@(BND r _):is) =
+yama :: [[Instr]] -> [Reg] -> [[Instr]] -> [[Instr]]
+yama acc seen (i@(BND r _:ncs):is) =
     case (find (edgeTo r) is, find (edgeFrom r) is) of
-        (Just x@(BOE e s t), _      ) -> if s `elem` seen
-                                            then yama (BON e t s:acc) (r:seen) $ is \\ [x]
-                                            else yama (i:acc) (r:seen) is
-        (Nothing, Just x@(BOE e s t)) -> if t `elem` seen
-                                            then yama (BIN e s t:acc) (r:seen) $ is \\ [x]
-                                            else yama (i:acc) (r:seen) is
+        (Just x@(BOE e s t:ecs), _  ) ->
+            if s `elem` seen
+                then yama ((BON e t s:(ncs++ecs)):acc) (r:seen) $ is \\ [x]
+                else yama (i:acc) (r:seen) is
+        (Nothing, Just x@(BOE e s t:ecs)) ->
+            if t `elem` seen
+                then yama ((BIN e s t:(ncs++ecs)):acc) (r:seen) $ is \\ [x]
+                else yama (i:acc) (r:seen) is
         (Nothing, Nothing)            -> yama (i:acc) (r:seen) is
-yama acc seen (i@(CKL r _):j:is)
-    | r `elem` seen = yama (i:acc) seen is
-    | otherwise     = yama acc seen (j:i:is)
 yama acc seen (i:is) = yama (i:acc) seen is
 yama acc _ [] = reverse acc
     
-makeOracle :: [Instr] -> [Instr]
+makeOracle :: [[Instr]] -> [Instr]
 makeOracle is = ors
     where ors = concatMap makeOra is
-          makeOra (BND _ s) = [ASRT s 1]
-          makeOra _         = []
+          makeOra (BND _ s:_) = [ASRT s 1]
+          makeOra _           = []
 
 
-sortInstr :: [Reg] -> [Instr] -> [Instr] -> [Instr]
-sortInstr rs acc (i@(BND r _):is) = sortInstr rs' (i:acc) $ concat [promoted, rest]
+sortInstr :: [Reg] -> [[Instr]] -> [[Instr]] -> [[Instr]]
+sortInstr rs acc (i@(BND r _:_):is) = sortInstr rs' (i:acc) $ concat [promoted, rest]
     where (promoted, rest) = partition promotable is
           rs' = r:rs
-          promotable (CKL x _)   | x == r = True
-          promotable (BLO _ n)   | n `elem` rs' = True
-          promotable (BOE _ s t) | s `elem` rs' && t `elem` rs' = True
-          promotable (BED _ a b) | a `elem` rs' && b `elem` rs' = True
+          promotable (BLO _ n:_)   | n `elem` rs' = True
+          promotable (BOE _ s t:_) | s `elem` rs' && t `elem` rs' = True
+          promotable (BED _ a b:_) | a `elem` rs' && b `elem` rs' = True
           -- TODO: should we promote NECs or not?
-          promotable (NEC s t)   | s `elem` rs' && t `elem` rs' = True
+          promotable (NEC s t:_)   | s `elem` rs' && t `elem` rs' = True
           promotable _ = False
 sortInstr rs acc (i:is) = sortInstr rs (i:acc) is
 sortInstr _  acc []     = reverse acc
 
-{- compileRHSLabel :: Mapping VarName Reg -> IRLabel -> [Instr]
-compileRHSLabel vars (IRVar v) = [LBL] -}
 
-compileMod :: OilrMod -> (OilrConfig, Mapping Id Int, DefBody) -> (OilrConfig, Mapping Id Int, DefBody)
-compileMod (Create x) (cfg, regs, body) = case x of
-    (IRNode id _ _ _     ) -> ( cfg, (id,r):regs, growRule body [] [ABN r] )
-    (IREdge id _ _ _ s t ) -> ( cfg, (id,r):regs, growRule body [] [abe regs r s t] )
+mkLabellingCode :: Mapping Id Int -> Reg -> IRLabel -> [Instr]
+mkLabellingCode _ r (IREmpty)    = []
+mkLabellingCode _ r (IRInt n)    = [LBL r n]
+mkLabellingCode vars r (IRVar v) = [CLL r $ definiteLookup v vars] 
+mkLabellingCode vars r (IRAdd x y) = case (x, y) of
+    (IRVar _, IRInt n) -> mkLabellingCode r x ++ [ADI r n]
+    (IRVar _, IRVar v) -> mkLabellingCode r x ++ [ADL r $ definiteLookup v vars]
+
+createElem :: Mapping Id Int -> Mapping Id Int -> Reg -> OilrElem -> [Instr]
+createElem vars regs reg (IRNode id m l (Sig _ _ _ r _)) = concat [ [ABN reg], mrk, lbl, rt ]
+    where mrk = if m == Uncoloured then [] else [MBL reg $ definiteLookup m colourIds]
+          rt  = if r then [RBN reg True] else []
+          lbl = case l of
+                    IREmpty -> []
+                    IRInt n -> [LBL reg n]
+createElem vars regs reg (IREdge id m l _ s t)             = concat [ [abe regs reg s t], mrk, lbl ]
+    where mrk = if m == Uncoloured then [] else [MBL reg $ definiteLookup m colourIds]
+          lbl = case l of
+                    IREmpty -> []
+                    IRInt n -> [LBL reg n]
+
+
+compileMod :: OilrMod -> (OilrConfig, Mapping Id Int, Mapping Id Int, DefBody) -> (OilrConfig, Mapping Id Int, Mapping Id Int, DefBody)
+compileMod (Create x) (cfg, vars, regs, body) =
+    (cfg,vars,(id,r):regs, growRule body [] $ createElem vars regs r x)
+{- case x of
+    (IRNode id _ _ _     ) -> ( cfg, vars, (id,r):regs, growRule body [] [ABN r] )
+    (IREdge id _ _ _ s t ) -> ( cfg, vars, (id,r):regs, growRule body [] [abe regs r s t] ) -}
     where r = length regs
-compileMod (Delete x) (cfg, regs, body) = case x of
-    (IRNode id _ l _)      -> ( cfg', (id,r):regs, growRule body (BND r sid:mkLabelTest r l) [DBN r] )
+          id = case x of
+                   (IRNode i _ _ _)   -> i
+                   (IREdge i _ _ _ _ _) -> i
+compileMod (Delete x) (cfg, vars, regs, body) = case x of
+    (IRNode id _ l _)      -> ( cfg', vars, (id,r):regs, growRule body (BND r sid:mkTests r x) [DBN r] )
     e@(IREdge id c _ bi s t)
-        | s == t    -> ( cfg, (id,r):regs, growRule body (bed regs r e) [DBL r] )
-        | otherwise -> ( cfg, (id,r):regs, growRule body (bed regs r e) [DBE r] )
+        | s == t    -> ( cfg, vars, (id,r):regs, growRule body (bed regs r e:mkTests r e) [DBL r] )
+        | otherwise -> ( cfg, vars, (id,r):regs, growRule body (bed regs r e:mkTests r e) [DBE r] )
     where r = length regs
           cfg' = makeSpc cfg (Delete x)
           sid = fst $ head $ searchSpaces cfg'
-compileMod (Same x)   (cfg, regs, body) = case x of
-    IRNode id _ l _      -> (cfg', (id,r):regs, growRule body (BND r sid:mkLabelTest r l) [])
-    e@(IREdge id _ _ _ _ _) -> (cfg,  (id,r):regs, growRule body (bed regs r e) [])
+compileMod (Same x)   (cfg, vars, regs, body) = case x of
+    IRNode id _ l _      -> (cfg', vars, (id,r):regs, growRule body (BND r sid:mkTests r x) [])
+    e@(IREdge id _ l _ _ _) -> (cfg, vars, (id,r):regs, growRule body (bed regs r e:mkTests r e) [])
     where r = length regs
           cfg' = makeSpc cfg (Same x)
           sid = fst $ head $ searchSpaces cfg'
-compileMod (Change left right) (cfg, regs, body) = case (left, right) of
+compileMod (Change left right) (cfg, vars, regs, body) = case (left, right) of
     (IRNode id _ l _     , IRNode _ _ _ _)
-            -> (cfg', (id,r):regs, growRule body (BND r sid:mkLabelTest r l) (diffs regs r left right) )
-    (e@(IREdge id c _ _ _ _), IREdge _ _ _ _ _ _)
-            -> (cfg,  (id,r):regs, growRule body (bed regs r e) (diffs regs r left right) )
+            -> (cfg', vars, (id,r):regs, growRule body (BND r sid:mkTests r left) (diffs vars regs r left right) )
+    (IREdge id c _ _ _ _, IREdge _ _ _ _ _ _)
+            -> (cfg,  vars, (id,r):regs, growRule body (bed regs r left:mkTests r left) (diffs vars regs r left right) )
     where r = length regs
           cfg' = makeSpc cfg $ Change left right
           sid = fst $ head $ searchSpaces cfg'
-compileMod (Check (IRNot (IREdge id _ _ _ s t))) (cfg, regs, body) =
-                            (cfg, regs, growRule body [nec regs s t] [])
+compileMod (Check (IRNot (IREdge id _ _ _ s t))) (cfg, vars, regs, body) =
+                            (cfg, vars, regs, growRule body [nec regs s t] [])
 -- compileMod x _ = error $ show x
 
 growRule :: DefBody -> [Instr] -> [Instr] -> DefBody
 growRule (RuleBody lhs rhs) lhsIns rhsIns = RuleBody lhs' rhs'
-    where lhs'  = lhsIns  ++ lhs
+    where lhs'  = lhsIns:lhs
           rhs'  = rhsIns  ++ rhs
 
-diffs :: Mapping Id Int -> Reg -> OilrElem -> OilrElem -> [Instr]
-diffs regs r (IRNode ib cb lb (Sig _ _ _ rb _)) (IRNode ia ca la (Sig _ _ _ ra _)) =
-    -- TODO: root flag setting not detected!
-    concat [ if cb /= ca then [CBL r $ definiteLookup ca colourIds] else []
-           , if lb /= la then [LBL r 0] else []     -- TODO: label support
+compileRhsLabel :: Mapping Id Int -> Reg -> IRLabel -> IRLabel -> [Instr]
+compileRhsLabel vars reg l (IRInt n) = [LBL reg n]
+compileRhsLabel vars reg l (IRVar v) = [CLL reg (definiteLookup v vars)]
+compileRhsLabel vars reg l (IRAdd (IRVar v) (IRInt n)) = [CLL reg (definiteLookup v vars), ADL reg n]
+
+diffs :: Mapping Id Int -> Mapping Id Int -> Reg -> OilrElem -> OilrElem -> [Instr]
+diffs vars regs r (IRNode ib cb lb (Sig _ _ _ rb _)) (IRNode ia ca la (Sig _ _ _ ra _)) =
+    concat [ if cb /= ca then [MBL r $ definiteLookup ca colourIds] else []
+           , if lb /= la then compileRhsLabel vars r lb la else []     -- TODO: label support
            , if rb /= ra then [RBN r ra] else [] ]
-diffs regs r (IREdge ib cb lb bb sb tb) (IREdge ia ca la ba sa ta)
+diffs vars regs r (IREdge ib cb lb bb sb tb) (IREdge ia ca la ba sa ta)
     -- i = id, c = colour, l = label, b = bidi, s = source node, t = target node
     | sb == sa && tb == ta =
         case bb == ba || ba of 
-        True -> concat [ if cb /= ca then [CBL r $ definiteLookup ca colourIds] else []
+        True -> concat [ if cb /= ca then [MBL r $ definiteLookup ca colourIds] else []
                        , if lb /= la then [LBL r 0] else [] ]  -- TODO: label support
-        False -> [ DBE r, abe regs r sa ta, CBL r $ definiteLookup ca colourIds, LBL r 0] -- TODO: label support
+        False -> [ DBE r, abe regs r sa ta, MBL r $ definiteLookup ca colourIds, LBL r 0] -- TODO: label support
     | otherwise            = error "Edge source and target should not change"
 
-mkLabelTest :: Reg -> IRLabel -> [Instr]
-mkLabelTest r IREmpty = []
+
+mkBTest :: Reg -> IRLabel -> [Instr]
+mkBTest r IREmpty = [CKB r False 0]
+mkBTest r (IRVar _) = []  -- a simple variable always matches, no test needed. TODO: IS THIS TRUE FOR UNLABELLED?
+mkBTest r (IRInt i) = [CKB r True i]
+mkBTest r l = error $ "Unimplemented label format: " ++ show l
+
+mkCTest :: Reg -> Colour -> [Instr]
+mkCTest r Any = []
+mkCTest r c = [CKM r (definiteLookup c colourIds)]
+
+mkRTest :: Reg -> Bool -> [Instr]
+mkRTest r True = [CKR r True]
+mkRTest r _    = []
+
+
+mkTests :: Reg -> OilrElem -> [Instr]
+mkTests r (IRNode _ cb lb (Sig _ _ _ rb _)) = concat [mkCTest r cb, mkBTest r lb, mkRTest r rb]
+mkTests r (IREdge _ cb lb _ _ _)            = concat [mkCTest r cb, mkBTest r lb]
+
+{- mkLabelTest :: Reg -> IRLabel -> [Instr]
+mkLabelTest r IREmpty = [CKB r False 0]
 mkLabelTest r (IRVar _) = []
-mkLabelTest r (IRInt i) = [CKL r i]
+mkLabelTest r (IRInt i) = [CKB r True i]
 mkLabelTest r l = error $ "Unimplemented label format: " ++ show l
 
 mkEdgeTests :: Reg -> IRLabel -> Colour -> [Instr]
-mkEdgeTests r l Dashed = CME r (definiteLookup Dashed colourIds):mkLabelTest r l
-mkEdgeTests r l _ = mkLabelTest r l
+mkEdgeTests r l Dashed = CKM r (definiteLookup Dashed colourIds):mkLabelTest r l
+mkEdgeTests r l _ = mkLabelTest r l -}
 
-{-              | IREdge  Id  Colour  IRLabel  Bool  Id Id -}
-bed :: Mapping Id Reg -> Reg -> OilrElem -> [Instr]
-bed regs r (IREdge _ c l _ s t) | s==t = BLO r (definiteLookup s regs):mkEdgeTests r l c
+bed :: Mapping Id Reg -> Reg -> OilrElem -> Instr
+bed regs r (IREdge _ c l _ s t) | s==t =
+    BLO r (definiteLookup s regs)
 bed regs r (IREdge _ c l False s t) =
-    BOE r (definiteLookup s regs) (definiteLookup t regs):mkEdgeTests r l c
+    BOE r (definiteLookup s regs) (definiteLookup t regs)
 bed regs r (IREdge _ c l True s t) =
-    BED r (definiteLookup s regs) (definiteLookup t regs):mkEdgeTests r l c
+    BED r (definiteLookup s regs) (definiteLookup t regs)
 
 
 abe :: Mapping Id Reg -> Reg -> Id -> Id -> Instr
@@ -286,6 +335,7 @@ nec :: Mapping Id Reg -> Id -> Id -> Instr
 nec regs s t = NEC (definiteLookup s regs) (definiteLookup t regs)
 
 -- compileExpr :: (Int, [Instr]) -> OilrExpr -> (Int, [Instr])
+compileExpr :: Int -> OilrExpr -> [Instr]
 compileExpr i (IRRuleSet rs)       = compileSet (i+1) rs
 compileExpr i (IRIf  cn th el) = concat [ compileExpr (i+1) cn
                                         , [ brz i "elseI", BAK ]
@@ -312,6 +362,7 @@ compileExpr i IRFals         = [ FLS ]
 
 tidyInsStream :: [Instr] -> [Instr] -> [Instr]
 tidyInsStream acc []             = reverse acc
+tidyInsStream acc (BND r s:CKB t _ _:is) | r == t = tidyInsStream (BND r s:acc) is
 tidyInsStream acc (TRU:BRZ _:is) = tidyInsStream (TRU:acc) is
 tidyInsStream acc (ALAP r: BRZ _:is) = tidyInsStream (ALAP r:acc) is
 tidyInsStream acc (i:is)         = tidyInsStream (i:acc) is

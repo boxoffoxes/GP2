@@ -53,6 +53,7 @@ data OilrExpr = IRSeqn [OilrExpr]
               | IRTry  OilrExpr OilrExpr OilrExpr
               | IRTrns OilrExpr   -- transaction that rolls-back if OilrExpr fails
               | IRRuleSet [Id] | IRCall Id | IRLoop OilrExpr
+              | IRProgOr OilrExpr OilrExpr
               | IRTrue | IRFals
      deriving (Show, Eq)
 
@@ -114,7 +115,7 @@ exprIR (IfStatement cn th el)  = IRIf (exprIR cn) (exprIR th) (exprIR el)
 --        IRSeqn [IRDscd (exprIR cn), IRBran (exprIR th) (exprIR el)]
 exprIR (TryStatement cn th el) = IRTry (exprIR cn) (exprIR th) (exprIR el)
 --        IRSeqn [IRTrns (exprIR cn), IRBran (exprIR th) (exprIR el)]
-exprIR (ProgramOr a b)          = error "Not implemented"
+exprIR (ProgramOr a b)          = IRProgOr (exprIR a) (exprIR b)
 exprIR (ProcedureCall p)        = IRCall p
 exprIR (Looped (RuleSet rs))    = IRLoop (IRRuleSet rs)
 exprIR (Looped (ProcedureCall p))=IRLoop (IRCall p)

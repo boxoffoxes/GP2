@@ -174,7 +174,7 @@ DList *indexMap[];
 #define LABL_OFFS (COLR_OFFS+OILR_C_BITS)
 #define LABL_MASK mask(OILR_B_BITS, LABL_OFFS)
 #define bBits(el) (flags(el) & LABL_MASK)
-#define isLabelled(el) (bBits(el))
+#define isLabelled(el) (bBits(el)?1:0)
 #define getLabel(el) ((el)->label)
 #define relabel(el, i) do { (el)->label = i; } while (0)
 
@@ -995,7 +995,7 @@ void BAK() {
 #define RBN(r, v) RBN_ ## v(r)
 #define RBN_True(r)  do { setRoot(reg(r)); } while (0)
 #define RBN_False(r) do { unsetRoot(reg(r)); } while (0)
-#define CBL(r, c) setColour(reg(r), c)
+#define MBL(r, c) setColour(reg(r), c)
 
 void bnd(Element **dst, DList **spc, DList **dl, long *pos) {
     /* TODO: can we encode RST into this by checking if dst is null? */
@@ -1093,7 +1093,7 @@ void bnd(Element **dst, DList **spc, DList **dl, long *pos) {
 		if (!boolFlag) fail(); \
 	} while (0)
 
-#define CME(r, c) \
+#define CKM(r, c) \
 	do { \
 		if (colour(reg(r))!=c) { \
 			boolFlag = 0; \
@@ -1101,16 +1101,24 @@ void bnd(Element **dst, DList **spc, DList **dl, long *pos) {
 		} \
 	} while (0)
 
-#define CKL(r, i) \
+#define CKB(r, b, i) \
 	do { \
-		if (getLabel(reg(r)) != i) { \
+		if (! (isLabelled(reg(r)) == (b) && getLabel(reg(r)) == i) ) { \
+			boolFlag = 0; \
+			fail(); \
+		} \
+	} while (0)
+
+#define CKR(r, b) \
+	do { \
+		if (! (isRoot(reg(r)) == (b)) ) { \
 			boolFlag = 0; \
 			fail(); \
 		} \
 	} while (0)
 
 
-#define SUC() if (recursionDepth>0) do { trace('S'); oilrTrace(NULL); nextTraceId(); recursionDepth--; (*self)(); boolFlag=1; } while (0)
+/* #define SUC() if (recursionDepth>0) do { trace('S'); oilrTrace(NULL); nextTraceId(); recursionDepth--; (*self)(); boolFlag=1; } while (0) */
 
 #define BNZ(tgt) if (boolFlag) goto tgt
 #define BRZ(tgt) if (!boolFlag) goto tgt

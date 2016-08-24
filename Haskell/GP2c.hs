@@ -18,7 +18,7 @@ import OILR4.OILROptim
 import OILR4.Spaces
 -- import OILR4.X86Backend
 import OILR4.CBackend
--- import OILR4.Eval
+import OILR4.Eval
 
 -- import GPSyntax -- debug code
 import ParseGraph

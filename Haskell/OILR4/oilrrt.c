@@ -496,6 +496,10 @@ void setColour(Element *n, long c) {
 	}
 	debug("(#) Set colour on element %ld to %ld\n", elementId(n), c);
 }
+void unLabel(Element *n) {
+	long flags = (flags(n) & (~LABL_MASK));
+	setFlags(n, flags);
+}
 void setLabel(Element *n, long i) {
 	long flags = (flags(n) | (1<<LABL_OFFS));
 	setFlags(n, flags);
@@ -996,6 +1000,12 @@ void BAK() {
 #define RBN_True(r)  do { setRoot(reg(r)); } while (0)
 #define RBN_False(r) do { unsetRoot(reg(r)); } while (0)
 #define MBL(r, c) setColour(reg(r), c)
+
+#define LBL(r, n) setLabel(reg(r), n)
+#define CLL(r, src) setLabel(reg(r), getLabel(reg(src)))
+#define RLL(r) unLabel(reg(r))
+#define ADI(r, n) setLabel(reg(r), n+getLabel(reg(r)))
+#define ADL(r, src) setLabel(reg(r), getLabel(reg(r)) + getLabel(reg(src)))
 
 void bnd(Element **dst, DList **spc, DList **dl, long *pos) {
     /* TODO: can we encode RST into this by checking if dst is null? */

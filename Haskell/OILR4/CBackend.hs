@@ -95,7 +95,11 @@ compileIns (DBL reg)         = build ["DBL", show reg]
 compileIns (RBN dst bool)    = build ["RBN", show dst, show bool]
 
 compileIns (MBL reg c)       = build ["MBL", show reg, show c]
-compileIns (LBL dst n)       = error "Compilation not implemented"
+compileIns (CLL dst src)     = build ["CLL", show dst, show src]
+compileIns (RLL reg)         = build ["RLL", show reg]
+compileIns (LBL dst n)       = build ["LBL", show dst, show n]
+compileIns (ADL dst src)     = build ["ADL", show dst, show src]
+compileIns (ADI dst n)       = build ["ADI", show dst, show n]
 
 compileIns (BND dst ss)      = build ["BND", show dst, spcName ss]
 compileIns (BOE dst src tgt) = build ("BOE":[show n|n<-[dst,src,tgt]])

@@ -1592,6 +1592,27 @@ section \ref{todo} this is quite possible in a low-level implementation
 of the instruction set, but relies on pointers and state variables, so
 is hard to express mathematically.
 
+\#\#\# Previous versions of the OILR Machine
+
+The work described in this chapter represents a formalisation of the
+operational semantics of the fourth incarnation of the OILR Machine.
+Development of the OILR Machine has been implementation-driven
+throughout.
+
+The first version served as a proof-of-concept, and implemented a
+structural-only subset of GP~2, lacking support for labels and marks. It
+utilised a partly interpretive run-time system written in C, with
+matched graph elements stored in indexable stacks.
+
+The second version switched to registers for graph element storage. The
+graph representation used arrays of element ids to track the edges
+assigned to each node.
+
+The third version returned to a linked-list approach to pairing edges to
+their nodes and nodes to their indices. It also developed the concept of
+the \emph{bind operation} as a measure of match efficiency, and a
+hardware independent performance indicator.
+
 \#\#\# Future work
 
 It became apparent while writing this chapter that, by extending search

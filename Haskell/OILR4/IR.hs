@@ -30,7 +30,7 @@ data Sig = Sig { outDeg      :: Int
                , inDeg       :: Int
                , loopDeg     :: Int
                , rootDeg     :: Bool
-               , biDeg       :: Int}
+               , biDeg       :: Int} -- bidi edges affect compatible signatures too!
          | NoSig
      deriving (Show, Eq) 
 

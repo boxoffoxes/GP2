@@ -75,7 +75,7 @@ data Instr =
     | CLL Dst Src          -- Copy eLement Label from Src to Dst
     | ADL Dst Src          -- ADd Label of Src to label of Dst
     | ADI Dst Int          -- ADd Immediate Int to label of Dst (use negative to subtr)
-
+    | RLL Dst              -- Remove label from element
 
     -- Definitions & program structure
     | DEF Id               -- DEFine function Idopen source dev site
@@ -211,21 +211,37 @@ mkLabellingCode _ r (IREmpty)    = []
 mkLabellingCode _ r (IRInt n)    = [LBL r n]
 mkLabellingCode vars r (IRVar v) = [CLL r $ definiteLookup v vars] 
 mkLabellingCode vars r (IRAdd x y) = case (x, y) of
-    (IRVar _, IRInt n) -> mkLabellingCode r x ++ [ADI r n]
-    (IRVar _, IRVar v) -> mkLabellingCode r x ++ [ADL r $ definiteLookup v vars]
+    (IRVar _, IRInt n) -> mkLabellingCode vars r x ++ [ADI r n]
+    (IRVar _, IRVar v) -> mkLabellingCode vars r x ++ [ADL r $ definiteLookup v vars]
 
 createElem :: Mapping Id Int -> Mapping Id Int -> Reg -> OilrElem -> [Instr]
-createElem vars regs reg (IRNode id m l (Sig _ _ _ r _)) = concat [ [ABN reg], mrk, lbl, rt ]
+createElem vars regs reg (IRNode id m l sig) = concat [ mrk, lbl, rt, [ABN reg] ]
     where mrk = if m == Uncoloured then [] else [MBL reg $ definiteLookup m colourIds]
-          rt  = if r then [RBN reg True] else []
+          rt  = case sig of
+                    (Sig _ _ _ True _) -> [RBN reg True]
+                    _                  -> []
+          lbl = (compileNewLabel vars reg . normaliseLabel) l 
+createElem vars regs reg (IREdge id m l _ s t)             = concat [ lbl, mrk, [abe regs reg s t] ]
+    where mrk = if m == Uncoloured then [] else [MBL reg $ definiteLookup m colourIds]
           lbl = case l of
                     IREmpty -> []
                     IRInt n -> [LBL reg n]
-createElem vars regs reg (IREdge id m l _ s t)             = concat [ [abe regs reg s t], mrk, lbl ]
-    where mrk = if m == Uncoloured then [] else [MBL reg $ definiteLookup m colourIds]
-          lbl = case l of
-                    IREmpty -> []
-                    IRInt n -> [LBL reg n]
+
+compileNewLabel :: Mapping Id Int -> Reg -> IRLabel -> [Instr]
+compileNewLabel vars reg IREmpty   = []
+compileNewLabel vars reg (IRInt n) = [LBL reg n]
+compileNewLabel vars reg (IRVar v) = [CLL reg $ definiteLookup v vars]
+compileNewLabel vars reg x         = reverse $ LBL reg 0 : compileNewLabel' x
+    where 
+          compileNewLabel' (IRInt n) = [ADI reg n]
+          compileNewLabel' (IRVar v) = [ADL reg $ definiteLookup v vars]
+          compileNewLabel' (IRAdd (IRVar v) t) = compileNewLabel' (IRVar v) ++ compileNewLabel' t
+
+normaliseLabel :: IRLabel -> IRLabel
+normaliseLabel (IRAdd (IRInt n) (IRInt m)) = IRInt (n+m)
+normaliseLabel (IRAdd n@(IRInt _) v@(IRVar _)) = IRAdd v n
+normaliseLabel (IRAdd a b) = IRAdd (normaliseLabel a) (normaliseLabel b)
+normaliseLabel l = l
 
 
 compileMod :: OilrMod -> (OilrConfig, Mapping Id Int, Mapping Id Int, DefBody) -> (OilrConfig, Mapping Id Int, Mapping Id Int, DefBody)
@@ -240,23 +256,23 @@ compileMod (Create x) (cfg, vars, regs, body) =
                    (IREdge i _ _ _ _ _) -> i
 compileMod (Delete x) (cfg, vars, regs, body) = case x of
     (IRNode id _ l _)      -> ( cfg', vars, (id,r):regs, growRule body (BND r sid:mkTests r x) [DBN r] )
-    e@(IREdge id c _ bi s t)
-        | s == t    -> ( cfg, vars, (id,r):regs, growRule body (bed regs r e:mkTests r e) [DBL r] )
-        | otherwise -> ( cfg, vars, (id,r):regs, growRule body (bed regs r e:mkTests r e) [DBE r] )
+    e@(IREdge id c l bi s t)
+        | s == t    -> ( cfg, addV l r vars, (id,r):regs, growRule body (bed regs r e:mkTests r e) [DBL r] )
+        | otherwise -> ( cfg, addV l r vars, (id,r):regs, growRule body (bed regs r e:mkTests r e) [DBE r] )
     where r = length regs
           cfg' = makeSpc cfg (Delete x)
           sid = fst $ head $ searchSpaces cfg'
 compileMod (Same x)   (cfg, vars, regs, body) = case x of
-    IRNode id _ l _      -> (cfg', vars, (id,r):regs, growRule body (BND r sid:mkTests r x) [])
-    e@(IREdge id _ l _ _ _) -> (cfg, vars, (id,r):regs, growRule body (bed regs r e:mkTests r e) [])
+    IRNode id _ l _      -> (cfg', addV l r vars, (id,r):regs, growRule body (BND r sid:mkTests r x) [])
+    e@(IREdge id _ l _ _ _) -> (cfg, addV l r vars, (id,r):regs, growRule body (bed regs r e:mkTests r e) [])
     where r = length regs
           cfg' = makeSpc cfg (Same x)
           sid = fst $ head $ searchSpaces cfg'
 compileMod (Change left right) (cfg, vars, regs, body) = case (left, right) of
     (IRNode id _ l _     , IRNode _ _ _ _)
-            -> (cfg', vars, (id,r):regs, growRule body (BND r sid:mkTests r left) (diffs vars regs r left right) )
-    (IREdge id c _ _ _ _, IREdge _ _ _ _ _ _)
-            -> (cfg,  vars, (id,r):regs, growRule body (bed regs r left:mkTests r left) (diffs vars regs r left right) )
+            -> (cfg', addV l r vars, (id,r):regs, growRule body (BND r sid:mkTests r left) (diffs vars regs r left right) )
+    (IREdge id c l _ _ _, IREdge _ _ _ _ _ _)
+            -> (cfg,  addV l r vars, (id,r):regs, growRule body (bed regs r left:mkTests r left) (diffs vars regs r left right) )
     where r = length regs
           cfg' = makeSpc cfg $ Change left right
           sid = fst $ head $ searchSpaces cfg'
@@ -264,12 +280,20 @@ compileMod (Check (IRNot (IREdge id _ _ _ s t))) (cfg, vars, regs, body) =
                             (cfg, vars, regs, growRule body [nec regs s t] [])
 -- compileMod x _ = error $ show x
 
+addV :: IRLabel -> Reg -> Mapping Id Reg -> Mapping Id Reg
+addV (IRVar v) r vars = (v,r):vars
+addV _ _ vars = vars
+
+
 growRule :: DefBody -> [Instr] -> [Instr] -> DefBody
 growRule (RuleBody lhs rhs) lhsIns rhsIns = RuleBody lhs' rhs'
     where lhs'  = lhsIns:lhs
           rhs'  = rhsIns  ++ rhs
 
 compileRhsLabel :: Mapping Id Int -> Reg -> IRLabel -> IRLabel -> [Instr]
+compileRhsLabel vars reg l IREmpty   = case l of
+                                            IREmpty -> []
+                                            _       -> [RLL reg]
 compileRhsLabel vars reg l (IRInt n) = [LBL reg n]
 compileRhsLabel vars reg l (IRVar v) = [CLL reg (definiteLookup v vars)]
 compileRhsLabel vars reg l (IRAdd (IRVar v) (IRInt n)) = [CLL reg (definiteLookup v vars), ADL reg n]

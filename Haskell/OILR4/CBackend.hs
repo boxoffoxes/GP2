@@ -38,6 +38,7 @@ makePreamble cf = concat [ trace (show flags) $ concatMap globalOpts flags, "\n"
           globalOpts EnableDebugging         = "#define OILR_DEBUGGING\n"
           globalOpts EnableParanoidDebugging = "#define OILR_PARANOID_CHECKS\n"
           globalOpts NoRecursion             = "#define MAX_RECURSE 0\n"
+          globalOpts UseTailRecursion        = "#define OILR_FAIL_ON_SUCCESS\n"
           globalOpts EnableExecutionTrace    = "#define OILR_EXECUTION_TRACE\n"
           globalOpts UseAppendToIndex        = "#define OILR_INDEX_APPEND\n"
           globalOpts UseCompactIndex         = concat [ "#define OILR_COMPACT_INDEX\n"
@@ -81,7 +82,7 @@ compileIns (ONCE name)       = build ["ONCE", name]
 compileIns (ALAP name)       = build ["ALAP", name]
 
 compileIns (REGS n)          = build ["REGS", show n]
--- compileIns (SUC) = error "Compilation not implemented"
+compileIns (REC)             = build ["REC"]
 compileIns (UBN n)           = build ["UBN", show n]
 -- compileIns (RST ss)          = build ["RST", spcName ss]
 
@@ -113,9 +114,9 @@ compileIns (CKM reg col)     = build ["CKM", show reg, show col]
 compileIns (CKB reg bool i)  = build ["CKB", show reg, if bool then "1" else "0", show i]
 compileIns (CKR reg bool)    = build ["CKR", show reg, if bool then "1" else "0"]
 
-compileIns (TAR t)           = t ++ ":\n"
-compileIns (BRZ t)           = build ["BRZ", t]
-compileIns (BNZ t)           = build ["BNZ", t]
+compileIns (L t)           = t ++ ":\n"
+compileIns (BF t)           = build ["BF", t]
+compileIns (BS t)           = build ["BS", t]
 compileIns (BRA t)           = build ["BRA", t]
 compileIns (BRN t)           = build ["BRN", t]
 
@@ -147,6 +148,7 @@ compileIns i     = build [show i]
 
 
 
+compileSS :: (Int, [Ind]) -> String
 compileSS (id, inds) = concat [ "\nDList *", name, "[] = { "
                               , intercalate ", " (map indName inds), ", NULL };\n"
                               , "DList *", name, "_dl;\n"
@@ -174,13 +176,10 @@ compileIndexMap cf = concat [ "\tDList *indexMap[] = {"
 build :: [String] -> String
 build (ins:args) = '\t':concat [ins, "(", intercalate "," args, ");\n"]
 
-indName :: Int -> String
-indName n = concat [ "&g.idx[", show n , "]"]
+indName :: Ind -> String
+indName i = concat [ "&g.idx[", show i , "]"]
 
 spcName :: Int -> String
 spcName n = concat [ "ss_", show n ]
-
-getIndSize :: OilrIndexBits -> Int
-getIndSize (OilrIndexBits b c o i l r) = (1 `shift` (b+c+o+i+l+r))
 
 

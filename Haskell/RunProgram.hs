@@ -95,7 +95,7 @@ evalExpr max ds (RuleSet rs) (GS g rc) =
 evalExpr max ds (Sequence es) gs = evalExprSeq max ds es gs
 evalExpr max ds (ProcedureCall proc) gs = evalExprSeq max (decls++ds) cs gs
     where Proc id decls cs = procLookup proc ds
-
+-- evalExpr max ds x gs = error (show x)
 
 {-
 evalCommandSequence :: Int -> [Declaration] -> [Command] -> GraphState -> [GraphState]

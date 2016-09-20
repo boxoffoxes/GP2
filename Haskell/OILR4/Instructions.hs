@@ -40,15 +40,15 @@ data DefBody = ProcBody [Instr]
 data Instr =
       REGS Int          -- Size of local register file
     -- | RST Sid           -- Reset search-space state
-    -- | SUC               -- Match success. Clean up after matchingthey, and possibly recurse
+    | REC               -- RECursion instruction. Emitted when recursive optimisation enabled.
     | UBN Int           -- UnBiNd elements in n registers (possibly superfluous?)
     -- Graph modification
     | ABN Dst           -- Add and Bind Node to register Dst
     | ABE Dst Src Tgt   -- Add and Bind Edge to register Dst between nodes in Src & Tgt
     | ABL Dst Src       -- Add and Bind Loop to register Dst on node Src
-    | DBN Dst           -- Delete Bound Node 
     | DBL Dst           -- Delete Bound Loop
     | DBE Dst           -- Delete Bound Node
+    | DBN Dst           -- Delete Bound Node 
     
     | RBN Dst Bool      -- set Root on Bound Node to Bool
     | MBL Dst Col       -- Mark Bound eLement
@@ -81,9 +81,9 @@ data Instr =
     | DEF Id               -- DEFine function Idopen source dev site
     | ONCE Id              -- call Id ONCE
     | ALAP Id              -- call Id for As Long As Possible
-    | TAR Target           -- jump TARget
-    | BRZ Target           -- BRanch if Zero (i.e. if bool flag is false)
-    | BNZ Target           -- Branch if Non-Zero
+    | L Target           -- jump TARget
+    | BF Target            -- Branch on Failure (ie if bool flag is false)
+    | BS Target            -- Branch on Success
     | BRA Target           -- Branch RAndomly. Take the branch 50% of the time.
     | BRN Target           -- unconditional BRaNch to Target
     | RET                  -- RETurn to IP on top of call-stack
@@ -120,12 +120,20 @@ data Instr =
 --    | NEED Int Spc         -- assert that a rule requires there to be Int nodes in Spc
 --    | CHFT Int Feature     -- increase or decrease the number of available Feature by Int
 --    | STFT Int Feature     -- set the number of available Feature to be Int
-    deriving (Show, Eq)
+    deriving (Show, Eq, Ord)
 
 
 prettyProg :: Prog -> String
 prettyProg prog = intercalate "\n" $ map prettyDefn prog
-    where prettyDefn (id, (pre, body, post)) = '\n':id ++ (intercalate "\n\t" $ ":":(map show $ concat [pre, smoosh body, post]))
+    where prettyDefn (id, (pre, body, post)) = '\n':id ++ (intercalate "\n" $ ":":(map prettify $ concat [pre, smoosh body, post]))
+          prettify (L tgt) = tgt ++ ":"
+          prettify (BS tgt) = "\tBS " ++ tgt
+          prettify (BF tgt) = "\tBF " ++ tgt
+          prettify (BRA tgt) = "\tBRA " ++ tgt
+          prettify (BRN tgt) = "\tBRN " ++ tgt
+          prettify (ONCE tgt) = "\tONCE " ++ tgt
+          prettify (ALAP tgt) = "\tALAP " ++ tgt
+          prettify i = '\t':show i
           smoosh (ProcBody is) = is
           smoosh (RuleBody lhs rhs) = concat [concat lhs, rhs]
 
@@ -153,8 +161,11 @@ compileRule name cfg ms = (defn, cfg')
           oracle = if UseOracle `elem` compilerFlags cfg
                         then makeOracle
                         else (\_ -> [])
+          recrsr = if NoRecursion `elem` compilerFlags cfg
+                        then []
+                        else [REC]
           pre  = [REGS (length regs)] ++ oracle lhs
-          body = RuleBody (merger $ sorter $ reverse lhs) (reverse rhs)
+          body = RuleBody ((merger $ sorter $ reverse lhs) ++ [recrsr]) (sort rhs)
           post = concat [ [UBN (length regs)]
                         -- , concat rhs
                         , [RET] ]
@@ -288,7 +299,7 @@ addV _ _ vars = vars
 growRule :: DefBody -> [Instr] -> [Instr] -> DefBody
 growRule (RuleBody lhs rhs) lhsIns rhsIns = RuleBody lhs' rhs'
     where lhs'  = lhsIns:lhs
-          rhs'  = rhsIns  ++ rhs
+          rhs'  = rhsIns ++ rhs
 
 compileRhsLabel :: Mapping Id Int -> Reg -> IRLabel -> IRLabel -> [Instr]
 compileRhsLabel vars reg l IREmpty   = case l of
@@ -309,7 +320,7 @@ diffs vars regs r (IREdge ib cb lb bb sb tb) (IREdge ia ca la ba sa ta)
         case bb == ba || ba of 
         True -> concat [ if cb /= ca then [MBL r $ definiteLookup ca colourIds] else []
                        , if lb /= la then [LBL r 0] else [] ]  -- TODO: label support
-        False -> [ DBE r, abe regs r sa ta, MBL r $ definiteLookup ca colourIds, LBL r 0] -- TODO: label support
+        False -> [ DBE r, abe regs r sa ta, MBL r $ definiteLookup ca colourIds, LBL r 0]
     | otherwise            = error "Edge source and target should not change"
 
 
@@ -362,13 +373,13 @@ nec regs s t = NEC (definiteLookup s regs) (definiteLookup t regs)
 compileExpr :: Int -> OilrExpr -> [Instr]
 compileExpr i (IRRuleSet rs)       = compileSet (i+1) rs
 compileExpr i (IRIf  cn th el) = concat [ compileExpr (i+1) cn
-                                        , [ brz i "elseI", BAK ]
+                                        , [ bf i "elseI", BAK ]
                                         , compileExpr (i+1) th
                                         , [ brn i "endI" , tar i "elseI" ]
                                         , compileExpr (i+1) el
                                         , [ tar i "endI" ] ]
 compileExpr i (IRTry cn th el) = concat [ compileExpr (i+1) cn 
-                                        , [ brz i "elseT" ]
+                                        , [ bf i "elseT" ]
                                         , compileExpr (i+1) th
                                         , [ brn i "endT" , tar i "elseT" ]
                                         , compileExpr (i+1) el
@@ -378,7 +389,7 @@ compileExpr i (IRSeqn es)    = compileSequence (i+1) es
 compileExpr i (IRLoop (IRRuleSet [r])) = [ ALAP (mangle r) ]
 compileExpr i (IRLoop e)     = concat [ [tar i "bgn" ],
                                         compileExpr (i+1) e,
-                                        [bnz i "bgn", TRU] ]
+                                        [bs i "bgn", TRU] ]
 compileExpr i (IRCall id)    = [ ONCE (mangle id) ]
 compileExpr i IRTrue         = [ TRU ]
 compileExpr i IRFals         = [ FLS ]
@@ -387,17 +398,17 @@ compileExpr i IRFals         = [ FLS ]
 tidyInsStream :: [Instr] -> [Instr] -> [Instr]
 tidyInsStream acc []             = reverse acc
 tidyInsStream acc (BND r s:CKB t _ _:is) | r == t = tidyInsStream (BND r s:acc) is
-tidyInsStream acc (TRU:BRZ _:is) = tidyInsStream (TRU:acc) is
-tidyInsStream acc (ALAP r: BRZ _:is) = tidyInsStream (ALAP r:acc) is
+tidyInsStream acc (TRU:BF _:is) = tidyInsStream (TRU:acc) is
+tidyInsStream acc (ALAP r: BF _:is) = tidyInsStream (ALAP r:acc) is
 tidyInsStream acc (i:is)         = tidyInsStream (i:acc) is
 
 
 compileSequence :: Int -> [OilrExpr] -> [Instr]
-compileSequence i es = intercalate [(brz i "end")] [ compileExpr i' e | (e, i') <- zip es [i..] ] ++ [tar i "end"]
+compileSequence i es = intercalate [(bf i "end")] [ compileExpr i' e | (e, i') <- zip es [i..] ] ++ [tar i "end"]
 
 compileSet :: Int -> [Id] -> [Instr]
 compileSet i [r] = [ ONCE (mangle r) ]
-compileSet i rs = intercalate [(bnz i "end")] [ [ONCE (mangle r)] | r <- rs ] ++ [tar i "end"]
+compileSet i rs = intercalate [(bs i "end")] [ [ONCE (mangle r)] | r <- rs ] ++ [tar i "end"]
 
 
 mangle :: String -> String
@@ -405,11 +416,11 @@ mangle "Main"  = "OILR_Main"
 mangle s@(i:_) | i `elem` ['A'..'Z'] = "OILR_proc_" ++ s
                | otherwise           = "OILR_rule_" ++ s
 
-bnz = labelledInstr BNZ
+bs = labelledInstr BS
+bf = labelledInstr BF
 bra = labelledInstr BRA
 brn = labelledInstr BRN
-brz = labelledInstr BRZ
-tar = labelledInstr TAR
+tar = labelledInstr L
 
 labelledInstr :: (String -> Instr) -> Int -> String -> Instr
 labelledInstr ins i s = ins ( s ++ ('_':show i) )

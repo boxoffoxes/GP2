@@ -5,12 +5,13 @@ if [ `uname -m` == "i686" ]; then
 else
 	GP2C_OPTS=""
 fi
-GP2C="`pwd`/../gp2c -R $GP2C_OPTS"
+GP2C="`pwd`/../gp2c -e  $GP2C_OPTS"
 ISO="`pwd`/../IsoChecker"
 
 
 failure () {
 	echo -e "\e[31m failure\e[0m"
+	tail -1 /tmp/debug.log
 }
 
 success () {
@@ -40,7 +41,7 @@ run_test () {
 	for t in *.host ; do
 		echo -n "Testing $t in $d	"
 		if solution_exists $t; then
-			( $GP2C $p.gp2 $t && ./$p > /tmp/$p.out && isocheck $t /tmp/$p.out ) > /dev/null 2>&1 && success || failure
+			( $GP2C $p.gp2 $t && ./$p 2>/tmp/debug.log > /tmp/$p.out && isocheck $t /tmp/$p.out ) > /dev/null 2>&1 && success || failure
 		fi
 	done
 	rm -f $p $p.c

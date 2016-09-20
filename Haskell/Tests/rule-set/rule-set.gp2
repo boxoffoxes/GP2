@@ -16,7 +16,7 @@ interface = {n1}
 
 // always  fails
 r3 () [
-	(n1, -1 # red) |
+	(n1, -1 # any) |
 ] => [ | ]
 interface = {n1}
 

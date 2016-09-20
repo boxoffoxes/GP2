@@ -1,4 +1,4 @@
-Main = { r1, r2 }!
+Main = { r2, r1 }!
 
 r1 () [
 	(n1, empty) |
@@ -10,7 +10,7 @@ interface = {n1}
 
 
 r2 () [
-	(n1, empty # red) |
+	(n1, empty) |
 ] => [|]
 interface = {}
 

@@ -1,0 +1,1 @@
+Main = if fail then fail else skip

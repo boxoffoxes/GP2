@@ -15,7 +15,7 @@ OILR4/CRuntime.hs : OILR4/oilrrt.c
 	touch OILR4/CRuntime.hs
 
 gp2 : Main.hs
-	$(GHC_PROF) -o $@ $<
+	$(GHC) -o $@ $<
 
 % : %.hs
 	$(GHC) $<

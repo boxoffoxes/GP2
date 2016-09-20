@@ -31,6 +31,7 @@ data Flag = NoOILR               -- switch off OILR indexing entirely
           | UseOracle            -- Use the graph oracle
           | UseCompactIndex      -- Use a minimal set of OILR indices
           | UseAppendToIndex     -- Append to index instead of prepending
+          | UseTailRecursion     -- Replace pre-modification recursion with tail-recursion (possibly unsafe?)
           -- OILR Runtime options
           | EnableDebugging
           | EnableParanoidDebugging

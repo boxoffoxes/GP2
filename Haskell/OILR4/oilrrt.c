@@ -52,37 +52,12 @@ char *colourNames[]   = { "", " # red", " # blue", " # green", " # grey", " # da
 
 // TODO: introduce a union to prevent this casting evil
 #define elementOfListItem(dl) ((Element *)((long)(dl)&(OILR_ELEM_MASK)))
+//#define elementOfListItem(dl) (getElementById( elementId( (Element *)(dl) ) ))
 
 #define listLength(dl) ((dl)->count)
 #define incListLength(dl) ((dl)->count++)
 #define decListLength(dl) ((dl)->count--)
 
-// #define OILR_COMPACT_LISTS
-
-#ifdef OILR_COMPACT_LISTS
-#define offs(dl, n) ((DList*)((Element*)(dl)+(n)))
-#define nextElem(dl) (offs(dl, (dl)->next))
-#define prevElem(dl) (offs(dl, (dl)->prev))
-#define headOfList(dl) (offs(dl, (dl)->head))
-#define setNext(dl, elem)  do { (dl)->next = elementId(elementOfListItem(elem))-elementId(elementOfListItem(dl)); } while (0)
-#define setPrev(dl, elem)  do { (dl)->prev = elementId(elementOfListItem(elem))-elementId(elementOfListItem(dl)); } while (0)
-#define setHead(dl, elem)  do { (dl)->head = elementId(elementOfListItem(elem))-elementId(elementOfListItem(dl)); } while (0)
-#define clearNext(dl)  do { setNext(dl, NULL) ; } while (0)
-#define clearPrev(dl)  do { setPrev(dl, NULL) ; } while (0)
-#define clearHead(dl)  do { setHead(dl, NULL) ; } while (0)
-typedef struct DList {
-	union {
-		int count;
-		int head;
-	};
-	int next;
-	int prev;
-	// Elements MUST be aligned to OILR_ELEM_ALIGN, which must in turn
-	// be a power of 2. That way we can simply mask-off a DList address
-	// to get to the containing Element.
-} DList;
-
-#else
 #define nextElem(dl) ((dl)->next)
 #define prevElem(dl) ((dl)->prev)
 #define headOfList(dl) ((dl)->head)
@@ -103,7 +78,6 @@ typedef struct DList {
 	// be a power of 2. That way we can simply mask-off a DList address
 	// to get to the containing Element.
 } DList;
-#endif
 
 #define source(e)   ((e)->src)
 #define target(e)   ((e)->tgt)
@@ -137,9 +111,23 @@ DList *indexMap[];
 
 // Flags field bit packing (starting with low-order bits):
 
+typedef struct _Flags {
+	unsigned int r:OILR_R_BITS;
+	unsigned int l:OILR_L_BITS;
+	unsigned int i:OILR_I_BITS;
+	unsigned int o:OILR_O_BITS;
+	unsigned int c:OILR_C_BITS;
+	unsigned int b:OILR_B_BITS;
+	unsigned int bound:OILR_BIND_BITS;
+	unsigned int type:OILR_T_BITS;
+} Flags;
+
+
 #define flags(el) ((el)->flags)
 #define setFlags(el, f) do { (el)->flags = (f); } while (0)
 #define mask(bits, offs) (((1<<(bits))-1)<<(offs))
+
+
 
 // Root-flag "rBits"
 #define ROOT_OFFS 0
@@ -201,7 +189,10 @@ DList *indexMap[];
 
 
 typedef struct Element {
-	unsigned int flags;
+	union {
+		Flags _f;
+		unsigned int flags;
+	};
 	int label;
 	union {
 		struct {
@@ -313,7 +304,7 @@ long identList(DList *dl, char **str) {
 
 #if defined(OILR_PARANOID_CHECKS) && !defined(NDEBUG)
 long walkChain(DList *dl) {
-	DList *p, *l = dl;
+	DList *p=NULL, *l = dl;
 	long len=0, blen=0;
 	while ( (l = nextElem(l)) ) {
 		len++;
@@ -917,43 +908,90 @@ void loopOnNode(Element **edge, Element *node) {
 // Backtracking instructions...
 #define B_STACK_SIZE (1024*1024*1)
 long bStack[B_STACK_SIZE];
-long *bsp = bStack+B_STACK_SIZE;
-long btDepth=0;
+#define BS0 (bStack+B_STACK_SIZE)
+long *bsp = BS0; // T-stack grows downwards
 
-#define pushB(v) do { *(--bsp)=(v); } while (0)
-
-enum BT_INSTR {
-	BEnd=0,  // i.e. b-stack sections are null terminated
-	BUnAdd,
+enum TransInstr {
+	tEnd=0, tMark, tRelabel, tUnlabel, tDelN, tDelA, tDelL, tAddN, tAddA, tAddL
 };
 
+#define pushT(v) do { *(--bsp)=(v); } while (0)
+#define popT() (*bsp++)
+#define dropT() (bsp++)
+
+#define trans1(ins, elem) if (bsp < BS0) { pushT(elem); pushT(ins); }
+#define trans2(ins, elem, val) if (bsp < BS0) { pushT(val); pushT(elem); pushT(ins); }
+
 void commit() {
-	while (*(bsp++));
-}
-void rollBack() {
 	long instr;
-	while ((instr = *bsp++)) {
+	while ( (instr = popT()) ) {
 		switch (instr) {
+			case tMark:  // oldm eid --
+			case tRelabel: // oldv eid --
+				dropT();
+			case tUnlabel: // eid
+			case tDelN:   // eid --
+			case tDelA:   // eid --
+			case tDelL:   // eid --
+			case tAddN:   // eid --
+			case tAddA:   // eid --
+			case tAddL:   // eid --
+				dropT();
+				break;
+			case tEnd:   // --
 			default:
 				failwith("Unknown b-stack instruction: %d\n", instr);
 		}
 	}
+	assert(bsp <= BS0);
+}
+void rollBack() {
+	long instr, eid, v;
+	while ( (instr = popT()) ) {
+		switch (instr) {
+			case tRelabel: // oldv eid --
+				eid = popT(); v = popT();
+				setLabelById(eid, v);
+				break;
+			case tUnlabel:
+				unLabel(getElementById(popT()));
+				break;
+			case tMark:  // oldm eid --
+				eid = popT(); v = popT();
+				setColourById(eid, v);
+				break;
+			case tDelN:   // eid --
+				break;
+			case tDelA:   // eid --
+				break;
+			case tDelL:   // eid --
+				break;
+			case tAddN:   // eid --
+				break;
+			case tAddA:   // eid --
+				break;
+			case tAddL:   // eid --
+				break;
+			case tEnd:   // --
+				break;
+			default:
+				failwith("Unknown b-stack instruction: %d\n", instr);
+		}
+	}
+	assert(bsp <= BS0);
 }
 
-void BBT() {
+void TRN() {
 	// TODO: shouldn't be managing this at runtime!
-	btDepth++;
-	pushB(BEnd);
+	pushT(tEnd);
 }
-void EBT() {
-	btDepth--;
+void ETR() {
 	if (boolFlag)
 		commit();
 	else
 		rollBack();
 }
 void BAK() {
-	btDepth--;
 	rollBack();
 }
 
@@ -987,19 +1025,18 @@ void BAK() {
 		fail(); \
 	} while (0) ; \
 	pass_ ## spc :
-	
 
-#define ABN(dst)            do { reg(dst) = addNode(); } while (0)
-#define ABE(dst, src, tgt)  do { reg(dst) = addEdge(reg(src), reg(tgt)); } while (0)
-#define ABL(dst, src)       do { reg(dst) = addLoop(reg(src)); } while (0)
-#define DBN(r) deleteNode(reg(r))
-#define DBE(r) deleteEdge(reg(r))
-#define DBL(r) deleteLoop(reg(r))
+#define ABN(dst)            do { reg(dst) = addNode(); trans1(tDelN, elementId(reg(dst))); } while (0)
+#define ABE(dst, src, tgt)  do { reg(dst) = addEdge(reg(src), reg(tgt)); trans1(tDelA, elementId(reg(dst))); } while (0)
+#define ABL(dst, src)       do { reg(dst) = addLoop(reg(src)); trans1(tDelL, elementId(reg(dst))); } while (0)
+#define DBN(r) do { trans1(tAddN, elementId(reg(r))); deleteNode(reg(r)); } while (0)
+#define DBE(r) do { trans1(tAddA, elementId(reg(r))); deleteEdge(reg(r)); } while (0)
+#define DBL(r) do { trans1(tAddL, elementId(reg(r))); deleteLoop(reg(r)); } while (0)
 
 #define RBN(r, v) RBN_ ## v(r)
 #define RBN_True(r)  do { setRoot(reg(r)); } while (0)
 #define RBN_False(r) do { unsetRoot(reg(r)); } while (0)
-#define MBL(r, c) setColour(reg(r), c)
+#define MBL(r, c) do { trans2(tMark, elementId(reg(r)), colour(reg(r))); setColour(reg(r), c); } while (0)
 
 #define LBL(r, n) setLabel(reg(r), n)
 #define CLL(r, src) setLabel(reg(r), getLabel(reg(src)))
@@ -1128,17 +1165,35 @@ void bnd(Element **dst, DList **spc, DList **dl, long *pos) {
 	} while (0)
 
 
-/* #define SUC() if (recursionDepth>0) do { trace('S'); oilrTrace(NULL); nextTraceId(); recursionDepth--; (*self)(); boolFlag=1; } while (0) */
 
-#define BNZ(tgt) if (boolFlag) goto tgt
-#define BRZ(tgt) if (!boolFlag) goto tgt
+#define BRN(tgt) goto tgt
+#define BS(tgt) if (boolFlag) goto tgt
+#define BF(tgt) if (!boolFlag) goto tgt
+#define BRA(tgt) if (random()%2) goto tgt
 
 #define TRU() do { boolFlag = 1; } while (0)
 #define FLS() do { boolFlag = 0; } while (0)
 
-#define UBN(n)  do { unbindAll(regs, (n)); recursionDepth++; } while (0)
 #define RST(spc) do { spc ## _dl = (spc)[0] ; spc ## _pos = 0; } while (0)
 
+#ifdef OILR_FAIL_ON_SUCCESS
+	// OILR_FAIL_ON_SUCCESS is in effect a tail-recursive version 
+	// of the recursive match strategy that picks-up where the 
+	// previous match left off. in this way an ALAP rule only exits
+	// from when the fail-stack is exhausted.
+#define UBN(n)  if (recursionDepth>0) { trace('S'); oilrTrace(NULL); nextTraceId(); fail(); } else { unbindAll(regs, (n)); }
+#else
+#define UBN(n)  do { unbindAll(regs, (n));  } while (0)
+#endif
+
+#if MAX_RECURSE > 0 && !defined(OILR_FAIL_ON_SUCCESS)
+#define REC() if (recursionDepth>0) do { trace('S'); oilrTrace(NULL); nextTraceId(); recursionDepth--; (*self)(); boolFlag=1; recursionDepth++; } while (0)
+#else
+#define REC()
+#endif
+
+#define ALAP(id) do { nextTraceId(); self=(id); do { recursionDepth=MAX_RECURSE; (id)(); } while (boolFlag); trace(boolFlag?'S':'F'); boolFlag=1; oilrTrace(NULL); } while (0)
+#define ONCE(id) do { nextTraceId(); recursionDepth=0; (id)(); trace(boolFlag?'S':'F'); oilrTrace(NULL); } while (0)
 
 
 /////////////////////////////////////////////////////////
@@ -1300,9 +1355,6 @@ int main(int argc, char **argv) {
 	// compactDumpGraph(stdout);
 	return 0;
 }
-
-#define ALAP(id) do { nextTraceId(); self=(id); do { recursionDepth=MAX_RECURSE; (id)(); } while (boolFlag); trace(boolFlag?'S':'F'); boolFlag=1; oilrTrace(NULL); } while (0)
-#define ONCE(id) do { nextTraceId(); recursionDepth=0; (id)(); trace(boolFlag?'S':'F'); oilrTrace(NULL); } while (0)
 
 /* #define ALAP_ORACLE(id, ...) if (oracle(__VA_ARGS__)) ALAP(id)
 #define ONCE_ORACLE(id, ...) if (oracle(__VA_ARGS__)) ONCE(id) */

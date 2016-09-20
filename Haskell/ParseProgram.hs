@@ -50,6 +50,8 @@ exprSequence = sepBy1 expr (symbol ";")
 expr :: Parser Expr
 expr  =  do { keyword "if"  ; condExpr IfStatement }
      <|> do { keyword "try" ; condExpr TryStatement }
+     <|> do { keyword "fail" ; return Fail }
+     <|> do { keyword "skip" ; return Skip }
      <|> do { cs <- between (symbol "(") (symbol ")") exprSequence ;
               option (Sequence cs) $ do { symbol "!" ; return $ Looped (Sequence cs) } }
      <|> do { id <- upperIdent; option (ProcedureCall id) $
@@ -57,8 +59,6 @@ expr  =  do { keyword "if"  ; condExpr IfStatement }
      <|> do { rs <- ruleSet; option (RuleSet rs) $
                              do { symbol "!" ; return $ Looped $ RuleSet rs } }
                                  
-     <|> do { keyword "skip" ; return Skip }
-     <|> do { keyword "fail" ; return Fail }
 
 condExpr :: (Expr -> Expr -> Expr -> Expr) -> Parser Expr
 condExpr constr = do { c <- expr ;

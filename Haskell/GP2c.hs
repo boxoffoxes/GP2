@@ -47,6 +47,8 @@ options = [ Option ['O'] ["no-oilr"] (NoArg NoOILR)
                     "Append index with modified nodes instead of prepending.",
             Option ['c'] ["compact-index"] (NoArg UseCompactIndex)
                     "Use a minimal set of OILR indices",
+            Option ['r'] ["tail-recursion"] (NoArg UseTailRecursion)
+                    "Use a tail-recursive matching strategy",
 
             Option ['d'] ["debug"]   (NoArg EnableDebugging)
                     "Enable verbose debugging output on compiled program's stderr" ,

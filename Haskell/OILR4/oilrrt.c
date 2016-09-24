@@ -8,6 +8,8 @@
 #include <assert.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
+#include <sys/wait.h>
 
 #define OILR_BIND_BITS 1
 #define OILR_T_BITS 2
@@ -41,6 +43,8 @@ void *currentBrk;
 long lastAlloc = 0;
 long recursionDepth = 0;
 void (*self)();
+
+pid_t ancestor, parent = 0;
 
 char *colourNames[]   = { "", " # red", " # blue", " # green", " # grey", " # dashed" };
 
@@ -240,8 +244,11 @@ Graph g;
 #define oilrStatus(node) do { Element *mN = (node); debug("\tNode %ld has OILR %ld: (%ld, %ld, %ld, %d)\n", elementId(mN), signature(mN), outdeg(mN), indeg(mN), loopdeg(mN), isRoot(mN)); } while (0)
 #endif
 
+#ifdef OILR_HAS_TRANSACTIONS
+#define failwith(...)  do { fprintf(stderr, __VA_ARGS__); kill(ancestor, SIGTERM); exit(1); } while (0)
+#else
 #define failwith(...)  do { fprintf(stderr, __VA_ARGS__); exit(1); } while (0)
-
+#endif
 
 long max(long a, long b) {
 	return (a>b) ? a : b;
@@ -905,95 +912,50 @@ void loopOnNode(Element **edge, Element *node) {
 }
 
 
-// Backtracking instructions...
-#define B_STACK_SIZE (1024*1024*1)
-long bStack[B_STACK_SIZE];
-#define BS0 (bStack+B_STACK_SIZE)
-long *bsp = BS0; // T-stack grows downwards
+#define TRN() do {\
+	pid_t p, child; \
+	int wstatus; \
+	\
+	p = getpid(); \
+	child = fork(); \
+	if (child < 0) { \
+		failwith("Could not begin transaction."); \
+	} else if (child > 0) { \
+		/* parent */ \
+		wait(&wstatus); \
+		if (WIFEXITED(wstatus) && WEXITSTATUS(wstatus) == 0) { \
+			boolFlag = 0;\
+		} else { \
+			failwith("Transaction aborted."); \
+		} \
+	} else { \
+		/* child */ \
+		parent = p;
 
-enum TransInstr {
-	tEnd=0, tMark, tRelabel, tUnlabel, tDelN, tDelA, tDelL, tAddN, tAddA, tAddL
-};
+// DANGER! Notice how we haven't closed the else block! ETR() or BAK() will do that for us. As a small bonus, the C compiler will check whether we've matched the bracketing pairs of TRN/ETR and TRN/BAK!
 
-#define pushT(v) do { *(--bsp)=(v); } while (0)
-#define popT() (*bsp++)
-#define dropT() (bsp++)
+#define ETR() \
+		if (boolFlag) { \
+			/* transaction completed successfully. We're still in the child process: kill the parent */ \
+			kill(parent, SIGTERM); \
+			parent = 0; \
+		} else { \
+			/* transaction failed. self-destruct. */ \
+			exit(0); \
+		} \
+	} /* end the block started in TRN */ \
+} while (0);
 
-#define trans1(ins, elem) if (bsp < BS0) { pushT(elem); pushT(ins); }
-#define trans2(ins, elem, val) if (bsp < BS0) { pushT(val); pushT(elem); pushT(ins); }
+#define BAK() \
+		if (boolFlag) { \
+			exit(0); \
+		} else { \
+			/* transaction failed. self-destruct. */ \
+			exit(0); \
+		} \
+	} /* end the block started in TRN */ \
+} while (0);
 
-void commit() {
-	long instr;
-	while ( (instr = popT()) ) {
-		switch (instr) {
-			case tMark:  // oldm eid --
-			case tRelabel: // oldv eid --
-				dropT();
-			case tUnlabel: // eid
-			case tDelN:   // eid --
-			case tDelA:   // eid --
-			case tDelL:   // eid --
-			case tAddN:   // eid --
-			case tAddA:   // eid --
-			case tAddL:   // eid --
-				dropT();
-				break;
-			case tEnd:   // --
-			default:
-				failwith("Unknown b-stack instruction: %d\n", instr);
-		}
-	}
-	assert(bsp <= BS0);
-}
-void rollBack() {
-	long instr, eid, v;
-	while ( (instr = popT()) ) {
-		switch (instr) {
-			case tRelabel: // oldv eid --
-				eid = popT(); v = popT();
-				setLabelById(eid, v);
-				break;
-			case tUnlabel:
-				unLabel(getElementById(popT()));
-				break;
-			case tMark:  // oldm eid --
-				eid = popT(); v = popT();
-				setColourById(eid, v);
-				break;
-			case tDelN:   // eid --
-				break;
-			case tDelA:   // eid --
-				break;
-			case tDelL:   // eid --
-				break;
-			case tAddN:   // eid --
-				break;
-			case tAddA:   // eid --
-				break;
-			case tAddL:   // eid --
-				break;
-			case tEnd:   // --
-				break;
-			default:
-				failwith("Unknown b-stack instruction: %d\n", instr);
-		}
-	}
-	assert(bsp <= BS0);
-}
-
-void TRN() {
-	// TODO: shouldn't be managing this at runtime!
-	pushT(tEnd);
-}
-void ETR() {
-	if (boolFlag)
-		commit();
-	else
-		rollBack();
-}
-void BAK() {
-	rollBack();
-}
 
 
 #define reg(r) (regs[(r)])
@@ -1026,17 +988,17 @@ void BAK() {
 	} while (0) ; \
 	pass_ ## spc :
 
-#define ABN(dst)            do { reg(dst) = addNode(); trans1(tDelN, elementId(reg(dst))); } while (0)
-#define ABE(dst, src, tgt)  do { reg(dst) = addEdge(reg(src), reg(tgt)); trans1(tDelA, elementId(reg(dst))); } while (0)
-#define ABL(dst, src)       do { reg(dst) = addLoop(reg(src)); trans1(tDelL, elementId(reg(dst))); } while (0)
-#define DBN(r) do { trans1(tAddN, elementId(reg(r))); deleteNode(reg(r)); } while (0)
-#define DBE(r) do { trans1(tAddA, elementId(reg(r))); deleteEdge(reg(r)); } while (0)
-#define DBL(r) do { trans1(tAddL, elementId(reg(r))); deleteLoop(reg(r)); } while (0)
+#define ABN(dst)            reg(dst) = addNode()
+#define ABE(dst, src, tgt)  reg(dst) = addEdge(reg(src), reg(tgt))
+#define ABL(dst, src)       reg(dst) = addLoop(reg(src))
+#define DBN(r) deleteNode(reg(r))
+#define DBE(r) deleteEdge(reg(r))
+#define DBL(r) deleteLoop(reg(r))
 
 #define RBN(r, v) RBN_ ## v(r)
 #define RBN_True(r)  do { setRoot(reg(r)); } while (0)
 #define RBN_False(r) do { unsetRoot(reg(r)); } while (0)
-#define MBL(r, c) do { trans2(tMark, elementId(reg(r)), colour(reg(r))); setColour(reg(r), c); } while (0)
+#define MBL(r, c) do { setColour(reg(r), c); } while (0)
 
 #define LBL(r, n) setLabel(reg(r), n)
 #define CLL(r, src) setLabel(reg(r), getLabel(reg(src)))
@@ -1065,6 +1027,7 @@ void bnd(Element **dst, DList **spc, DList **dl, long *pos) {
 }
 
 #define BND(dstR, spc) \
+	spc ## _dl = (spc)[0] ; spc ## _pos = 0; /* reset search space */ \
 	l_ ## dstR : \
 	do { \
 		bnd( &reg(dstR), (spc), &spc ## _dl, &spc ## _pos ); \
@@ -1183,7 +1146,7 @@ void bnd(Element **dst, DList **spc, DList **dl, long *pos) {
 	// from when the fail-stack is exhausted.
 #define UBN(n)  if (recursionDepth>0) { trace('S'); oilrTrace(NULL); nextTraceId(); fail(); } else { unbindAll(regs, (n)); }
 #else
-#define UBN(n)  do { unbindAll(regs, (n));  } while (0)
+#define UBN(n)  do { unbindAll(regs, (n)); } while (0)
 #endif
 
 #if MAX_RECURSE > 0 && !defined(OILR_FAIL_ON_SUCCESS)
@@ -1303,6 +1266,17 @@ void dumpGraph(FILE *file) {
 	}
 } */
 
+#ifdef OILR_HAS_TRANSACTIONS
+// Signal handler for transactional programs
+// Does nothing except ensure that parent process
+// doesn't quit until all output is written by 
+// successful child process.
+void trans_output_handler(int sig) {
+	(void)sig; // ignore arg
+	exit(0);
+}
+#endif
+
 /////////////////////////////////////////////////////////
 // main
 
@@ -1311,6 +1285,11 @@ int main(int argc, char **argv) {
 	// that is guaranteed not to move, so we have to do it ourselves with brk().
 	// Screw C. Added bonus: brk always starts out aligned to a memory page, so we
 	// get aligned memory for free.
+#ifdef OILR_HAS_TRANSACTIONS
+	pid_t worker;
+#endif
+
+	ancestor = getpid();
 	currentBrk = sbrk(0);  // get current brk address -- C doesn't give us a way to 
 	debug("Brk: 0x%x, sizeof(Element): %d, num inds: %d\n", currentBrk, sizeof(Element), OILR_INDEX_SIZE);
 	g.pool = currentBrk;
@@ -1324,22 +1303,22 @@ int main(int argc, char **argv) {
 	oilrTraceFile = stderr;
 #endif
 
-/*	for (i=0; i<OILR_INDEX_SIZE; i++) {
-		DList *ind = index(i);
-		ind->count = 0;
-		ind->head  = NULL;
-		ind->next  = NULL;
-		ind->prev  = NULL;
-	} */
+#ifdef OILR_HAS_TRANSACTIONS
+	worker = fork();
+	if (worker < 0)
+		failwith("Couldn't fork a worker process.");
+	else if (worker > 0) {
+		signal(SIGUSR1, &trans_output_handler);
+		pause();
+	} else
+		parent = ancestor;
+#endif
 
-	// checkGraph();
 	_HOST();
-
-	// setRootById(1);
 	checkGraph();
-//	dumpGraph(stdout);
 
 	OILR_Main();
+	checkGraph();
 #ifndef NDEBUG
 	debug("Program completed in %ld bind and %ld unbind operations.\n", bindCount, unbindCount);
 #elif ! defined(OILR_EXECUTION_TRACE)
@@ -1348,11 +1327,13 @@ int main(int argc, char **argv) {
 	//assert(bindCount == unbindCount);
 
 	if (!boolFlag) {
-		debug("* GP2 program failed.\n");
-		return 1;
+		failwith("* GP2 program failed.\n");
 	}
 	dumpGraph(stdout);
 	// compactDumpGraph(stdout);
+#ifdef OILR_HAS_TRANSACTIONS
+	kill(ancestor, SIGUSR1);
+#endif
 	return 0;
 }
 

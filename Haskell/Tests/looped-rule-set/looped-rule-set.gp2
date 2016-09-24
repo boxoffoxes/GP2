@@ -1,4 +1,4 @@
-Main = { r2, r1 }!
+Main = { r1, r2 }!
 
 r1 () [
 	(n1, empty) |

@@ -1,0 +1,22 @@
+Main = init; { prop_red }!
+
+init (x:list) [
+	(n1, x)
+| ] => [
+	(n1, x # red)
+|]
+interface = {n1}
+
+prop_red (x,y,z:list) [
+	(n1, x # red)
+	(n2, y)
+|
+	(e1 (B), n1, n2, z)
+] => [
+	(n1, x # red)
+	(n2, y # red)
+|
+	(e1 (B), n1, n2, z)
+]
+interface = {n1,n2}
+

@@ -41,6 +41,7 @@ makePreamble cf = concat [ trace (show flags) $ concatMap globalOpts flags, "\n"
           globalOpts UseTailRecursion        = "#define OILR_FAIL_ON_SUCCESS\n"
           globalOpts EnableExecutionTrace    = "#define OILR_EXECUTION_TRACE\n"
           globalOpts UseAppendToIndex        = "#define OILR_INDEX_APPEND\n"
+          globalOpts EnableTransactions      = "#define OILR_HAS_TRANSACTIONS\n"
           globalOpts UseCompactIndex         = concat [ "#define OILR_COMPACT_INDEX\n"
                                                       , "#define OILR_PHYS_INDEX_SIZE ", show $ physIndCount cf, "\n"]
           globalOpts _ = ""
@@ -121,12 +122,6 @@ compileIns (BRA t)           = build ["BRA", t]
 compileIns (BRN t)           = build ["BRN", t]
 
 compileIns (RET)             = "l_exit:\n\treturn;\n}"
--- compileIns (RTZ) = error "Compilation not implemented"
--- compileIns (RNZ) = error "Compilation not implemented"
-
--- compileIns (BBT) = error "Compilation not implemented"
--- compileIns (BAK) = error "Compilation not implemented"
--- compileIns (EBT) = error "Compilation not implemented"
 
 compileIns (ASRT ss n) = build ["ASRT", spcName ss]
 

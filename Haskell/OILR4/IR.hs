@@ -277,10 +277,10 @@ makeIRLabel vs []                  = IREmpty
 makeIRLabel vs [Val (Int i)]       = IRInt i
 makeIRLabel vs [Neg (Val (Int i))] = IRInt (-i)  -- work-around for parser bug
 makeIRLabel vs [Val v]             = error $ "Unsupported literal value: " ++ show v
-makeIRLabel vs [Var (v, ListVar)]  = case lookup v vs of
+makeIRLabel vs [Var (v, ListVar)]  = IRVar v {-case lookup v vs of
                                         Just IntVar  -> IRVar v
                                         Just ListVar -> IRLst v  -- TODO: only valid if v is not evaluated!
-                                        t -> error $ v ++ " is of unsupported type: " ++ show t
+                                        t -> error $ v ++ " is of unsupported type: " ++ show t -}
 makeIRLabel vs [Plus a b]          = IRAdd (makeIRLabel vs [a]) (makeIRLabel vs [b])
 makeIRLabel vs [Var (v, t)]        = error $ "All variables coming out of the parser should have type ListVar, but variable " ++ v ++ " had type " ++ show t
 makeIRLabel vs [atom]              = error $ "Unsupported atom: " ++ show atom

@@ -137,13 +137,24 @@ prettyProg prog = intercalate "\n" $ map prettyDefn prog
           smoosh (ProcBody is) = is
           smoosh (RuleBody lhs rhs) = concat [concat lhs, rhs]
 
+hasTransactions :: OilrExpr -> Bool
+hasTransactions (IRTrns e)    = True
+hasTransactions (IRIf c t e)  = True
+hasTransactions (IRCall _)    = False
+hasTransactions (IRRuleSet _) = False
+hasTransactions (IRLoop e)    = hasTransactions e
+hasTransactions (IRProgOr a b) = or [ hasTransactions a , hasTransactions b ]
+hasTransactions (IRTry c t e) = or $ map hasTransactions [c,t,e]
+hasTransactions (IRSeqn es)   = or $ map hasTransactions es
+
 compileProg :: OilrConfig -> [OilrIR] -> (OilrConfig, Prog)
 compileProg cfg ir = foldr compile (cfg, []) ir
 
 compile :: OilrIR -> (OilrConfig, Prog) -> (OilrConfig, Prog)
-compile (IRProc name e)  (cfg, is) = (cfg,  ((mangle name, ([], defn, [RET])):is) )
+compile (IRProc name e)  (cfg, is) = (cfg',  ((mangle name, ([], defn, [RET])):is) )
     where defn = ProcBody $ tidyInsStream [] (compileExpr t e)
           t = length is * 1000
+          cfg' = if hasTransactions e then cfg { compilerFlags=EnableTransactions:(compilerFlags cfg) } else cfg
 compile (IRRule name es) (cfg, is) = (cfg', defn:is)
     where (defn, cfg') = compileRule (mangle name) cfg es
 
@@ -372,8 +383,8 @@ nec regs s t = NEC (definiteLookup s regs) (definiteLookup t regs)
 -- compileExpr :: (Int, [Instr]) -> OilrExpr -> (Int, [Instr])
 compileExpr :: Int -> OilrExpr -> [Instr]
 compileExpr i (IRRuleSet rs)       = compileSet (i+1) rs
-compileExpr i (IRIf  cn th el) = concat [ compileExpr (i+1) cn
-                                        , [ bf i "elseI", BAK ]
+compileExpr i (IRIf  cn th el) = concat [ TRN:compileExpr (i+1) cn
+                                        , [ BAK, bf i "elseI" ]
                                         , compileExpr (i+1) th
                                         , [ brn i "endI" , tar i "elseI" ]
                                         , compileExpr (i+1) el
